@@ -113,8 +113,10 @@ public struct TerminalReport {
     }
 
     public mutating func finding(_ finding: Finding, showImage: Bool) {
+        // Severity picks the colour, the kind picks the word: truncated and untranslated are both
+        // errors, so keying the text off severity alone badges a bad translation as a truncation.
         let badge = switch finding.severity {
-        case .error: paint(" TRUNCATED ", "41;97")
+        case .error: paint(" \(finding.kind.uppercased()) ", "41;97")
         case .info: paint(" INFO ", "100;97")
         }
         let label = finding.image.name.language.map { paint("[\($0)]", "36") } ?? ""
