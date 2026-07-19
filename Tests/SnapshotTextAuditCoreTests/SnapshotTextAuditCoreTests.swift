@@ -96,6 +96,38 @@ final class ImageBoxTests: XCTestCase {
         XCTAssertEqual(half.height, 351)
     }
 
+    /// The terminal reserves the height it is told and scales inside it, so a box-shaped
+    /// reservation leaves dead rows under a wide image. Fitted output must match the image's shape.
+    func testFittedMatchesImageAspectRatio() {
+        let box = TerminalReport.ImageBox(width: 800, height: 1400)
+        let wide = box.fitted(intrinsicWidth: 390, intrinsicHeight: 220)
+        XCTAssertEqual(wide.width, 800)
+        XCTAssertEqual(wide.height, 451)
+        XCTAssertLessThan(wide.height, box.height)
+    }
+
+    func testFittedClampsTallImagesByHeight() {
+        let box = TerminalReport.ImageBox(width: 800, height: 1400)
+        let tall = box.fitted(intrinsicWidth: 1206, intrinsicHeight: 2622)
+        XCTAssertEqual(tall.height, 1400)
+        XCTAssertEqual(tall.width, 644)
+        XCTAssertLessThan(tall.width, box.width)
+    }
+
+    func testFittedScalesSquareToBothLimits() {
+        let box = TerminalReport.ImageBox(width: 400, height: 700)
+        let square = box.fitted(intrinsicWidth: 444, intrinsicHeight: 444)
+        XCTAssertEqual(square.width, 400)
+        XCTAssertEqual(square.height, 400)
+    }
+
+    func testFittedFallsBackWhenIntrinsicSizeUnknown() {
+        let box = TerminalReport.ImageBox(width: 400, height: 700)
+        let unknown = box.fitted(intrinsicWidth: 0, intrinsicHeight: 0)
+        XCTAssertEqual(unknown.width, 400)
+        XCTAssertEqual(unknown.height, 700)
+    }
+
     func testTinyZoomStaysVisible() {
         let tiny = TerminalReport.ImageBox().scaled(by: 0.001)
         XCTAssertGreaterThanOrEqual(tiny.width, 32)

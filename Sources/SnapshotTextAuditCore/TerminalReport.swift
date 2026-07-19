@@ -39,12 +39,11 @@ public struct TerminalReport {
     private let box: ImageBox
     private var out = ""
 
-    /// The area an inline image is fitted into, in pixels.
+    /// The largest area an inline image may occupy, in pixels.
     ///
-    /// Both dimensions are sent with `preserveAspectRatio`, so the image lands inside the box rather
-    /// than being stretched. A width alone would be wrong here: snapshot corpora mix near-square
-    /// widget tiles with phone screens three times taller than they are wide, and sizing those by
-    /// width alone buries the terminal in scrollback.
+    /// A width cap alone would be wrong here: snapshot corpora mix near-square widget tiles with
+    /// phone screens three times taller than they are wide, and sizing those by width alone buries
+    /// the terminal in scrollback. Images are scaled down to fit both dimensions, never stretched.
     public struct ImageBox: Sendable {
         public var width: Int
         public var height: Int
@@ -58,6 +57,21 @@ public struct TerminalReport {
             ImageBox(
                 width: max(32, Int((Double(width) * zoom).rounded())),
                 height: max(32, Int((Double(height) * zoom).rounded()))
+            )
+        }
+
+        /// The exact size an image of `intrinsic` dimensions should be drawn at to fit this box.
+        ///
+        /// The terminal reserves whatever height it is given and only *then* scales the image inside
+        /// it, so handing it the box height leaves a band of empty rows under anything that is not
+        /// exactly the box's aspect ratio. Computing the fitted size here keeps the reservation and
+        /// the drawing the same shape.
+        public func fitted(intrinsicWidth: Int, intrinsicHeight: Int) -> (width: Int, height: Int) {
+            guard intrinsicWidth > 0, intrinsicHeight > 0 else { return (width, height) }
+            let scale = min(Double(width) / Double(intrinsicWidth), Double(height) / Double(intrinsicHeight))
+            return (
+                max(1, Int((Double(intrinsicWidth) * scale).rounded())),
+                max(1, Int((Double(intrinsicHeight) * scale).rounded()))
             )
         }
     }
@@ -81,12 +95,13 @@ public struct TerminalReport {
     }
 
     /// iTerm2 inline image protocol. Returns nil when unsupported or the file cannot be read.
-    private func image(_ url: URL) -> String? {
+    private func image(_ url: URL, intrinsicWidth: Int, intrinsicHeight: Int) -> String? {
         guard style.inlineImages, let data = try? Data(contentsOf: url) else { return nil }
         let name = Data(url.lastPathComponent.utf8).base64EncodedString()
         let payload = data.base64EncodedString()
+        let size = box.fitted(intrinsicWidth: intrinsicWidth, intrinsicHeight: intrinsicHeight)
         return "\(Self.esc)]1337;File=name=\(name);size=\(data.count);inline=1;"
-            + "width=\(box.width)px;height=\(box.height)px;preserveAspectRatio=1:\(payload)\(Self.bel)"
+            + "width=\(size.width)px;height=\(size.height)px;preserveAspectRatio=1:\(payload)\(Self.bel)"
     }
 
     public mutating func heading(_ text: String) {
@@ -108,7 +123,11 @@ public struct TerminalReport {
         let file = finding.image.url
         out += "    " + link(file.lastPathComponent, to: file) + "\n"
 
-        if showImage, let rendered = image(file) {
+        if showImage, let rendered = image(
+            file,
+            intrinsicWidth: finding.image.pixelWidth,
+            intrinsicHeight: finding.image.pixelHeight
+        ) {
             out += rendered + "\n"
         }
     }
