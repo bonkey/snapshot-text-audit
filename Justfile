@@ -19,12 +19,18 @@ universal:
     swift build -c release --arch arm64 --arch x86_64
     @lipo -info .build/apple/Products/Release/snapshot-text-audit
 
+# Defaults to a user-writable prefix so installing needs no sudo.
+#   just prefix=/usr/local/bin install
+prefix := env_var_or_default("PREFIX", home_directory() / ".local/bin")
+
 install: universal
-    install -m 0755 .build/apple/Products/Release/snapshot-text-audit /usr/local/bin/snapshot-text-audit
-    @echo "installed → /usr/local/bin/snapshot-text-audit"
+    @mkdir -p "{{prefix}}"
+    install -m 0755 .build/apple/Products/Release/snapshot-text-audit "{{prefix}}/snapshot-text-audit"
+    @echo "installed → {{prefix}}/snapshot-text-audit"
+    @command -v snapshot-text-audit >/dev/null 2>&1 || echo "note: {{prefix}} is not on your PATH"
 
 uninstall:
-    rm -f /usr/local/bin/snapshot-text-audit
+    rm -f "{{prefix}}/snapshot-text-audit"
 
 # Tarball + checksum in {{dist}}/, named for the current tag.
 package: test universal
@@ -54,14 +60,16 @@ release TAG: test
         echo "tag {{TAG}} already exists" >&2; exit 1
     fi
     git tag -a "{{TAG}}" -m "{{TAG}}"
+    # Push before creating the release: gh would otherwise invent the tag from the
+    # default branch head rather than use the annotated one just made here.
+    git push origin "{{TAG}}"
     just package
     gh release create "{{TAG}}" \
         --title "{{TAG}}" \
         --generate-notes \
         dist/snapshot-text-audit-{{TAG}}-macos-universal.tar.gz \
         dist/checksums.txt
-    git push origin "{{TAG}}"
-    @echo "released {{TAG}}"
+    echo "released {{TAG}} — https://github.com/bonkey/snapshot-text-audit/releases/tag/{{TAG}}"
 
 clean:
     rm -rf .build "{{dist}}"

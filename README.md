@@ -13,20 +13,29 @@ the frame, and four separate strings shipping in English on translated screens.
 
 ## Install
 
-Download a universal binary from [Releases](https://github.com/bonkey/snapshot-text-audit/releases),
-or build it:
+Download the binary — no toolchain needed. One universal build runs on Apple silicon and Intel.
+
+```sh
+curl -L https://github.com/bonkey/snapshot-text-audit/releases/latest/download/snapshot-text-audit-macos-universal.tar.gz | tar xz
+sudo mv snapshot-text-audit /usr/local/bin/
+```
+
+Or grab the tarball from the [Releases page](https://github.com/bonkey/snapshot-text-audit/releases);
+`checksums.txt` is attached to every release.
+
+<details>
+<summary>Build from source instead</summary>
 
 ```sh
 git clone https://github.com/bonkey/snapshot-text-audit
 cd snapshot-text-audit
-just install          # universal binary → /usr/local/bin
+just install                  # universal binary → ~/.local/bin
+PREFIX=/usr/local/bin just install
 ```
 
-Without `just`:
+Without `just`: `swift build -c release && cp .build/release/snapshot-text-audit ~/.local/bin/`
 
-```sh
-swift build -c release && cp .build/release/snapshot-text-audit /usr/local/bin/
-```
+</details>
 
 Requires macOS 13+. No dependencies.
 
@@ -161,9 +170,11 @@ Cut from a laptop; there is no CI.
 just release v1.0.0
 ```
 
-Runs the tests, refuses a dirty tree or an existing tag, builds a universal binary, tars it with a
-checksum, publishes the GitHub release and pushes the tag. `just package` stops short of publishing if
-you only want the artefact.
+Runs the tests, refuses a dirty tree or a tag that already exists, tags and pushes, builds one binary
+carrying both architectures, and publishes a GitHub release with the tarball and its checksum attached
+— so anyone can download and run it without a Swift toolchain.
+
+`just package` stops short of publishing if you only want the artefact locally.
 
 ## Licence
 
