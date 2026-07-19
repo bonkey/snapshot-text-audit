@@ -5,6 +5,12 @@ public struct TerminalStyle: Sendable {
     public let hyperlinks: Bool
     public let inlineImages: Bool
 
+    public init(colour: Bool, hyperlinks: Bool, inlineImages: Bool) {
+        self.colour = colour
+        self.hyperlinks = hyperlinks
+        self.inlineImages = inlineImages
+    }
+
     /// Detects capabilities. Everything degrades to plain text when stdout is not a terminal, so
     /// piping to a file or a CI log never emits escape sequences or base64 image payloads.
     public static func detect(imagesRequested: Bool) -> TerminalStyle {
@@ -30,12 +36,35 @@ public struct TerminalStyle: Sendable {
 
 public struct TerminalReport {
     private let style: TerminalStyle
-    private let imageWidth: Int
+    private let box: ImageBox
     private var out = ""
 
-    public init(style: TerminalStyle, imageWidth: Int = 320) {
+    /// The area an inline image is fitted into, in pixels.
+    ///
+    /// Both dimensions are sent with `preserveAspectRatio`, so the image lands inside the box rather
+    /// than being stretched. A width alone would be wrong here: snapshot corpora mix near-square
+    /// widget tiles with phone screens three times taller than they are wide, and sizing those by
+    /// width alone buries the terminal in scrollback.
+    public struct ImageBox: Sendable {
+        public var width: Int
+        public var height: Int
+
+        public init(width: Int = 400, height: Int = 700) {
+            self.width = width
+            self.height = height
+        }
+
+        public func scaled(by zoom: Double) -> ImageBox {
+            ImageBox(
+                width: max(32, Int((Double(width) * zoom).rounded())),
+                height: max(32, Int((Double(height) * zoom).rounded()))
+            )
+        }
+    }
+
+    public init(style: TerminalStyle, box: ImageBox = ImageBox()) {
         self.style = style
-        self.imageWidth = imageWidth
+        self.box = box
     }
 
     private static let esc = "\u{1B}"
@@ -57,7 +86,7 @@ public struct TerminalReport {
         let name = Data(url.lastPathComponent.utf8).base64EncodedString()
         let payload = data.base64EncodedString()
         return "\(Self.esc)]1337;File=name=\(name);size=\(data.count);inline=1;"
-            + "width=\(imageWidth)px;preserveAspectRatio=1:\(payload)\(Self.bel)"
+            + "width=\(box.width)px;height=\(box.height)px;preserveAspectRatio=1:\(payload)\(Self.bel)"
     }
 
     public mutating func heading(_ text: String) {

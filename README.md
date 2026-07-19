@@ -36,7 +36,14 @@ snapshot-text-audit . --include 'FocusWidget*' --exclude '*-dark.png'
 
 # draw the offending image right in the terminal (iTerm2)
 snapshot-text-audit . --images
+snapshot-text-audit . --zoom 2              # twice as big
+snapshot-text-audit . --image-size 900x1400 # explicit fit box
 ```
+
+`--zoom` and `--image-size` both imply `--images`. Images are fitted inside a box rather than sized by
+width alone: snapshot corpora mix near-square widget tiles with phone screens three times taller than
+they are wide, and sizing those by width buries the terminal in scrollback. The default box is
+400×700; `--zoom 2` makes it 800×1400.
 
 Exit code is `1` when there are findings, `0` when clean, `2` on bad usage — so it drops into a
 pipeline unchanged.
@@ -115,6 +122,15 @@ with `--changed`.
 Vision serialises inside a single process; running several processes in parallel is about three times
 faster than threads within one. If whole-corpus runs become a bottleneck, sharding across processes is
 the lever.
+
+## Tests
+
+```sh
+swift test
+```
+
+Covers file-name parsing, the truncation rule, baseline matching (including that a rename does not
+resurrect an accepted finding, and that changed copy does), glob filters, and image-box scaling.
 
 ## Limits
 

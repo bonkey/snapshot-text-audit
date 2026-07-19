@@ -22,7 +22,8 @@ CHECKS
 
 OUTPUT
   --images               draw the snapshot inline (iTerm2 only)
-  --image-width <px>     inline image width (default: 320)
+  --zoom <factor>        scale inline images (default: 1.0, e.g. 2 for double)
+  --image-size <w>x<h>   fit box in px for inline images (default: 400x700)
   --baseline <file>      accepted findings to ignore
   --write-baseline       print baseline records for every finding, then exit 0
   --quiet                findings only
@@ -43,7 +44,8 @@ struct Options {
     var checkEdges = false
     var baselineLanguage = "en"
     var images = false
-    var imageWidth = 320
+    var zoom: Double?
+    var box = TerminalReport.ImageBox()
     var baselineFile: URL?
     var writeBaseline = false
     var quiet = false
@@ -82,7 +84,14 @@ while index < arguments.count {
     case "--edges": options.checkEdges = true
     case "--baseline-language": options.baselineLanguage = value("--baseline-language")
     case "--images": options.images = true
-    case "--image-width": options.imageWidth = Int(value("--image-width")) ?? 320
+    case "--zoom":
+        guard let factor = Double(value("--zoom")), factor > 0 else { fail("--zoom needs a positive number") }
+        options.zoom = factor
+    case "--image-size":
+        let raw = value("--image-size")
+        let parts = raw.lowercased().split(separator: "x").compactMap { Int($0) }
+        guard parts.count == 2 else { fail("--image-size expects <width>x<height>, got \(raw)") }
+        options.box = TerminalReport.ImageBox(width: parts[0], height: parts[1])
     case "--baseline": options.baselineFile = URL(fileURLWithPath: value("--baseline"))
     case "--write-baseline": options.writeBaseline = true
     case "--quiet": options.quiet = true
@@ -93,6 +102,8 @@ while index < arguments.count {
     index += 1
 }
 
+if options.zoom != nil { options.images = true }
+
 if let first = positional.first {
     options.root = URL(fileURLWithPath: first).standardizedFileURL
 }
@@ -101,7 +112,8 @@ guard FileManager.default.fileExists(atPath: options.root.path) else {
 }
 
 let style = TerminalStyle.detect(imagesRequested: options.images)
-var report = TerminalReport(style: style, imageWidth: options.imageWidth)
+let imageBox = options.box.scaled(by: options.zoom ?? 1.0)
+var report = TerminalReport(style: style, box: imageBox)
 
 var urls: [URL]
 if let base = options.changedBase {
@@ -130,7 +142,7 @@ if let file = options.baselineFile, FileManager.default.fileExists(atPath: file.
 if !options.quiet {
     report.note("scanning \(urls.count) image\(urls.count == 1 ? "" : "s")…")
     report.flush()
-    report = TerminalReport(style: style, imageWidth: options.imageWidth)
+    report = TerminalReport(style: style, box: imageBox)
 }
 
 let languages = ["en-US", "fr-FR", "es-ES", "pt-BR", "de-DE", "it-IT"]

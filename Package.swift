@@ -14,5 +14,9 @@ let package = Package(
             name: "snapshot-text-audit",
             dependencies: ["SnapshotTextAuditCore"]
         ),
+        .testTarget(
+            name: "SnapshotTextAuditCoreTests",
+            dependencies: ["SnapshotTextAuditCore"]
+        ),
     ]
 )
