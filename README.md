@@ -82,6 +82,14 @@ width alone: snapshot corpora mix near-square widget tiles with phone screens th
 they are wide, and sizing those by width buries the terminal in scrollback. The default box is
 400×700; `--zoom 2` makes it 800×1400.
 
+Each finding is printed above the reference it came from, so the verdict and the evidence sit together:
+
+![Findings with the offending references drawn inline in the terminal](docs/inline-images.png)
+
+Both of these are real — the same escape button truncated in Brazilian and European Portuguese, where
+the surviving text says the duration but not what it applies to. Seeing them saves the round trip of
+opening two files in Preview to decide whether a hit is worth acting on.
+
 Exit code is `1` when there are findings, `0` when clean, `2` on bad usage — so it drops into a
 pipeline unchanged.
 
