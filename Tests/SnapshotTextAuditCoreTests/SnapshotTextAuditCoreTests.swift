@@ -340,6 +340,116 @@ final class ApprovalsTests: XCTestCase {
     }
 }
 
+final class OCRCacheTests: XCTestCase {
+    private var directory = URL(fileURLWithPath: "/")
+    private let languages = ["en-US", "pt-BR"]
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cache-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func cache() -> OCRCache { OCRCache(directory: directory) }
+
+    private func image(_ name: String, contents: String) throws -> URL {
+        let url = directory.appendingPathComponent(name)
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private func scanned(_ url: URL, _ texts: [String]) -> ScannedImage {
+        ScannedImage(
+            url: url,
+            name: SnapshotName(url: url),
+            lines: texts.map { TextLine(text: $0, minX: 0.1, minY: 0.2, maxX: 0.3, maxY: 0.4) },
+            pixelWidth: 148,
+            pixelHeight: 148
+        )
+    }
+
+    func testRoundTripsAScan() throws {
+        let url = try image("roster.148x148-en-light.png", contents: "pixels")
+        let key = try XCTUnwrap(cache().key(for: url, languages: languages))
+
+        cache().store(scanned(url, ["Block distracting apps"]), for: key)
+        let hit = try XCTUnwrap(cache().scan(for: key, url: url))
+
+        XCTAssertEqual(hit.lines.map(\.text), ["Block distracting apps"])
+        XCTAssertEqual(hit.pixelWidth, 148)
+        XCTAssertEqual(hit.lines.first?.maxY, 0.4)
+    }
+
+    func testMissReturnsNil() throws {
+        let url = try image("roster.148x148-en-light.png", contents: "pixels")
+        let key = try XCTUnwrap(cache().key(for: url, languages: languages))
+        XCTAssertNil(cache().scan(for: key, url: url))
+    }
+
+    /// The point of keying on content: a rewritten file with the same pixels still hits.
+    func testKeyIgnoresPathAndModificationDate() throws {
+        let first = try image("roster.148x148-en-light.png", contents: "pixels")
+        let second = try image("meeting.170x170-pt-PT-dark.png", contents: "pixels")
+        XCTAssertEqual(
+            cache().key(for: first, languages: languages),
+            cache().key(for: second, languages: languages)
+        )
+    }
+
+    func testChangedPixelsAreADifferentKey() throws {
+        let before = try image("a.png", contents: "pixels")
+        let after = try image("b.png", contents: "different pixels")
+        XCTAssertNotEqual(
+            cache().key(for: before, languages: languages),
+            cache().key(for: after, languages: languages)
+        )
+    }
+
+    /// Recognition languages change what Vision returns, so they must not share an entry.
+    func testLanguagesArePartOfTheKey() throws {
+        let url = try image("a.png", contents: "pixels")
+        XCTAssertNotEqual(
+            cache().key(for: url, languages: ["en-US"]),
+            cache().key(for: url, languages: ["en-US", "de-DE"])
+        )
+    }
+
+    func testUnreadableFileHasNoKey() {
+        XCTAssertNil(cache().key(for: directory.appendingPathComponent("gone.png"), languages: languages))
+    }
+
+    /// A byte-identical render in another language shares an entry, but must keep its own identity.
+    func testHitCarriesTheRequestingFilesName() throws {
+        let english = try image("roster.148x148-small-min-default-en-light.png", contents: "pixels")
+        let portuguese = try image("roster.148x148-small-min-default-pt-PT-light.png", contents: "pixels")
+        let key = try XCTUnwrap(cache().key(for: english, languages: languages))
+
+        cache().store(scanned(english, ["Focus"]), for: key)
+        let hit = try XCTUnwrap(cache().scan(for: key, url: portuguese))
+
+        XCTAssertEqual(hit.url, portuguese)
+        XCTAssertEqual(hit.name.language, "pt-PT")
+    }
+
+    func testStoreOnAnUnwritableDirectoryIsSurvivable() throws {
+        let url = try image("a.png", contents: "pixels")
+        let blocked = OCRCache(directory: URL(fileURLWithPath: "/dev/null/nope"))
+        let key = try XCTUnwrap(blocked.key(for: url, languages: languages))
+        blocked.store(scanned(url, ["Focus"]), for: key)
+        XCTAssertNil(blocked.scan(for: key, url: url))
+    }
+
+    func testDefaultDirectoryIsUnderCaches() {
+        let path = OCRCache.defaultDirectory.path
+        XCTAssertTrue(path.hasSuffix("/snapshot-text-audit"))
+        XCTAssertTrue(path.contains("Caches"))
+    }
+}
+
 final class GlobFilterTests: XCTestCase {
     private let urls = [
         URL(fileURLWithPath: "/refs/FocusWidgetSnapshotTests/confirm-timed-block.148x148-en-light.png"),

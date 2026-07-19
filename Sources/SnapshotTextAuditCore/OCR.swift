@@ -3,7 +3,7 @@ import Foundation
 import Vision
 
 /// One line of text Vision recognised, with its box in normalised coordinates (origin bottom-left).
-public struct TextLine: Sendable, Hashable {
+public struct TextLine: Sendable, Hashable, Codable {
     public let text: String
     public let minX: Double
     public let minY: Double
@@ -67,14 +67,18 @@ public enum OCR {
     /// Concurrency is capped. Each Vision request holds a decoded bitmap, so handing the whole corpus
     /// to one task group at once exhausts memory and thrashes long before it finishes — a thousand
     /// images must run as a sliding window, not a stampede.
+    ///
+    /// Pass a `cache` to reuse results for images whose bytes have not changed. Hashing happens on
+    /// the worker threads alongside the scans, so a cold run pays for it in parallel.
     public static func scanAll(
         urls: [URL],
         languages: [String],
+        cache: OCRCache? = nil,
         maxConcurrent: Int = max(2, ProcessInfo.processInfo.activeProcessorCount - 2),
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
-    ) -> (scanned: [ScannedImage], failures: [URL]) {
+    ) -> (scanned: [ScannedImage], failures: [URL], cached: Int) {
         let total = urls.count
-        guard total > 0 else { return ([], []) }
+        guard total > 0 else { return ([], [], 0) }
 
         // Vision's request handler blocks the calling thread. Dispatching it onto the cooperative
         // pool starves that pool — the pool is sized to the core count and every task sits blocked
@@ -88,8 +92,21 @@ public enum OCR {
         for (index, url) in urls.enumerated() {
             semaphore.wait()
             queue.async(group: group) {
-                let scanned = try? OCR.scan(url: url, languages: languages)
-                box.record(index: index, scanned: scanned, url: url, total: total, onProgress: onProgress)
+                let key = cache?.key(for: url, languages: languages)
+
+                if let cache, let key, let hit = cache.scan(for: key, url: url) {
+                    box.record(
+                        index: index, scanned: hit, url: url,
+                        wasCached: true, total: total, onProgress: onProgress
+                    )
+                } else {
+                    let scanned = try? OCR.scan(url: url, languages: languages)
+                    if let scanned, let cache, let key { cache.store(scanned, for: key) }
+                    box.record(
+                        index: index, scanned: scanned, url: url,
+                        wasCached: false, total: total, onProgress: onProgress
+                    )
+                }
                 semaphore.signal()
             }
         }
@@ -103,27 +120,30 @@ public enum OCR {
         private let lock = NSLock()
         private var results = [Int: ScannedImage]()
         private var failures = [URL]()
+        private var cached = 0
         private var done = 0
 
         func record(
             index: Int,
             scanned: ScannedImage?,
             url: URL,
+            wasCached: Bool,
             total: Int,
             onProgress: (@Sendable (Int, Int) -> Void)?
         ) {
             lock.lock()
             done += 1
             let progress = done
+            if wasCached { cached += 1 }
             if let scanned { results[index] = scanned } else { failures.append(url) }
             lock.unlock()
             onProgress?(progress, total)
         }
 
-        func drain(order: Range<Int>) -> (scanned: [ScannedImage], failures: [URL]) {
+        func drain(order: Range<Int>) -> (scanned: [ScannedImage], failures: [URL], cached: Int) {
             lock.lock()
             defer { lock.unlock() }
-            return (order.compactMap { results[$0] }, failures)
+            return (order.compactMap { results[$0] }, failures, cached)
         }
     }
 }

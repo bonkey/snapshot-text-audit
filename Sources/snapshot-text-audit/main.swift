@@ -30,6 +30,13 @@ OUTPUT
   --reason <text>        reason recorded by --approve
   --quiet                findings only
 
+CACHE
+  OCR results are reused between runs, keyed on image content, from
+  ~/Library/Caches/snapshot-text-audit. A changed image is always rescanned.
+
+  --no-cache             ignore the cache and rescan everything
+  --clear-cache          delete the cache, then carry on
+
 EXIT
   0  no findings, or only informational ones
   1  truncated or untranslated text found
@@ -52,6 +59,8 @@ struct Options {
     var approve = false
     var reason: String?
     var quiet = false
+    var useCache = true
+    var clearCache = false
 }
 
 func fail(_ message: String) -> Never {
@@ -99,6 +108,8 @@ while index < arguments.count {
     case "--approve": options.approve = true
     case "--reason": options.reason = value("--reason")
     case "--quiet": options.quiet = true
+    case "--no-cache": options.useCache = false
+    case "--clear-cache": options.clearCache = true
     default:
         if argument.hasPrefix("-") { fail("unknown option \(argument)") }
         positional.append(argument)
@@ -151,6 +162,12 @@ if FileManager.default.fileExists(atPath: approvedURL.path) {
     }
 }
 
+let cache = OCRCache()
+if options.clearCache {
+    try? FileManager.default.removeItem(at: cache.directory)
+    if !options.quiet { report.note("cleared \(cache.directory.path)") }
+}
+
 if !options.quiet {
     report.note("scanning \(urls.count) image\(urls.count == 1 ? "" : "s")…")
     report.flush()
@@ -158,7 +175,11 @@ if !options.quiet {
 }
 
 let languages = ["en-US", "fr-FR", "es-ES", "pt-BR", "de-DE", "it-IT"]
-let (scanned, failures) = OCR.scanAll(urls: urls, languages: languages)
+let (scanned, failures, cacheHits) = OCR.scanAll(
+    urls: urls,
+    languages: languages,
+    cache: options.useCache ? cache : nil
+)
 
 var findings: [Finding] = []
 if options.checkTruncation { findings += Checks.truncated(in: scanned) }
@@ -204,6 +225,7 @@ if !options.quiet {
     if !infos.isEmpty { summary += " · \(infos.count) informational" }
     if approvedCount > 0 { summary += " · \(approvedCount) approved" }
     if !failures.isEmpty { summary += " · \(failures.count) unreadable" }
+    if cacheHits > 0 { summary += " · \(cacheHits) cached" }
     report.heading(summary)
 }
 

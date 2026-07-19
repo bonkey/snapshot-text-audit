@@ -198,12 +198,32 @@ failing. Languages parse as `en`, `pt-BR`, `es-419`.
 
 ## Performance
 
-Roughly 60s for 1000 images, about 1s for a handful — and a handful is the normal case when scoped
-with `--changed`.
+Roughly 60s for 1000 images cold, about 1s for a handful — and a handful is the normal case when
+scoped with `--changed`. A second run over unchanged images is near-instant, because OCR results are
+cached.
 
 Vision serialises inside a single process; running several processes in parallel is about three times
 faster than threads within one. If whole-corpus runs become a bottleneck, sharding across processes is
 the lever.
+
+### Cache
+
+OCR is the entire cost of a run — everything after it is string comparison — so results are kept in
+`~/Library/Caches/snapshot-text-audit` and reused. Nothing is written to the repository, and the OS
+may purge the directory at will, which is the right fate for a pure derivation.
+
+Entries are keyed on the image's **bytes**, not its path or modification date: `git checkout` rewrites
+mtimes without changing a pixel, and references get regenerated wholesale, so anything else would miss
+exactly when it mattered. A changed image is therefore always rescanned — a stale hit is not possible.
+Two byte-identical renders share one entry and still report under their own names.
+
+```sh
+snapshot-text-audit .                 # uses the cache
+snapshot-text-audit . --no-cache      # ignore it, rescan everything
+snapshot-text-audit . --clear-cache   # delete it, then carry on
+```
+
+The run summary counts the hits: `1000 scanned · 2 findings · 998 cached`.
 
 ## Tests
 
@@ -212,8 +232,8 @@ swift test
 ```
 
 Covers file-name parsing, the truncation rule, hostname exclusion, baseline matching (including that a
-rename does not resurrect an accepted finding, and that changed copy does), glob filters, and
-image-box scaling.
+rename does not resurrect an accepted finding, and that changed copy does), cache keying and
+round-tripping, glob filters, and image-box scaling.
 
 ## Limits
 
