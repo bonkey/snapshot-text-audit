@@ -25,7 +25,7 @@ OUTPUT
   --zoom <factor>        scale inline images (default: 1.0, e.g. 2 for double)
   --image-size <w>x<h>   fit box in px for inline images (default: 400x700)
   --approved <file>      YAML of reviewed-and-accepted findings to ignore
-                         (default: snapshot-text-approved.yml beside <root>)
+                         (default: ./.snapshot-text-approved.yml)
   --approve              add everything found to that file, then exit 0
   --reason <text>        reason recorded by --approve
   --quiet                findings only
@@ -136,8 +136,11 @@ guard !urls.isEmpty else {
     exit(0)
 }
 
+// Relative to the working directory, not to <root>: the file gets committed next to the code that
+// owns it, and deriving it from <root> drops it somewhere different for every scope you scan.
+let workingDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let approvedURL = options.approvedFile
-    ?? options.root.deletingLastPathComponent().appendingPathComponent("snapshot-text-approved.yml")
+    ?? workingDirectory.appendingPathComponent(Approvals.defaultFileName)
 
 var approvals = Approvals(url: approvedURL)
 if FileManager.default.fileExists(atPath: approvedURL.path) {
@@ -170,9 +173,8 @@ let approvedCount = findings.count { approvals.approves($0) }
 findings = findings.filter { !approvals.approves($0) }
 
 if options.approve {
-    let base = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let added = approvals.add(findings.map {
-        Approvals.entry(for: $0, reason: options.reason, relativeTo: base)
+        Approvals.entry(for: $0, reason: options.reason, relativeTo: workingDirectory)
     })
     do {
         try approvals.write(to: approvedURL, header: Approvals.defaultHeader)

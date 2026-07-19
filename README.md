@@ -138,8 +138,9 @@ snapshot-text-audit . --approve --reason "titles ellipsise by design"
 snapshot-text-audit .                      # now silent about them
 ```
 
-`--approve` writes `snapshot-text-approved.yml` next to the corpus (override with `--approved`), and
-merges on re-run, so it is safe to repeat and your hand-written entries survive.
+`--approve` writes `./.snapshot-text-approved.yml` — in the working directory, so it lands next to the
+code that owns it rather than somewhere derived from whatever you happened to scan. Override with
+`--approved`. It merges on re-run, so it is safe to repeat and hand-written entries survive.
 
 ```yaml
 approved:

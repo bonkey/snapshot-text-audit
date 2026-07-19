@@ -248,6 +248,11 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(approvals.entries[0].matches(file: "a/b.png", text: "x", kind: "untranslated"))
     }
 
+    func testDefaultFileNameIsADotfile() {
+        XCTAssertEqual(Approvals.defaultFileName, ".snapshot-text-approved.yml")
+        XCTAssertTrue(Approvals.defaultFileName.hasPrefix("."))
+    }
+
     func testGeneratedPathIsRelativeToBase() {
         let base = URL(fileURLWithPath: "/repo/ios")
         let file = URL(fileURLWithPath: "/repo/ios/App/Snapshots/Suite/a.png")

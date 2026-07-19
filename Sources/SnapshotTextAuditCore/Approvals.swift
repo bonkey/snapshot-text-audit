@@ -150,6 +150,10 @@ public struct Approvals: Sendable {
         try body.write(to: destination, atomically: true, encoding: .utf8)
     }
 
+    /// Dotfile by default: this is tooling config living beside the code it describes, not a
+    /// document anyone browses.
+    public static let defaultFileName = ".snapshot-text-approved.yml"
+
     public static let defaultHeader = """
     # Findings that have been reviewed and accepted. Anything not listed here is reported.
     #
