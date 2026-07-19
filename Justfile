@@ -1,5 +1,5 @@
-version := `git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"`
 dist := "dist"
+artifact := "snapshot-text-audit-macos-universal.tar.gz"
 
 default:
     @just --list
@@ -32,7 +32,8 @@ install: universal
 uninstall:
     rm -f "{{prefix}}/snapshot-text-audit"
 
-# Tarball + checksum in {{dist}}/, named for the current tag.
+# Tarball + checksum in {{dist}}/. The name carries no version so that
+# /releases/latest/download/{{artifact}} is a stable URL.
 package: test universal
     #!/usr/bin/env bash
     set -euo pipefail
@@ -40,7 +41,7 @@ package: test universal
     staging=$(mktemp -d)
     cp .build/apple/Products/Release/snapshot-text-audit "$staging/"
     cp README.md LICENSE "$staging/"
-    tar -czf "{{dist}}/snapshot-text-audit-{{version}}-macos-universal.tar.gz" -C "$staging" .
+    tar -czf "{{dist}}/{{artifact}}" -C "$staging" .
     rm -rf "$staging"
     (cd "{{dist}}" && shasum -a 256 *.tar.gz > checksums.txt)
     ls -lh "{{dist}}"
@@ -67,7 +68,7 @@ release TAG: test
     gh release create "{{TAG}}" \
         --title "{{TAG}}" \
         --generate-notes \
-        dist/snapshot-text-audit-{{TAG}}-macos-universal.tar.gz \
+        "dist/{{artifact}}" \
         dist/checksums.txt
     echo "released {{TAG}} — https://github.com/bonkey/snapshot-text-audit/releases/tag/{{TAG}}"
 
