@@ -182,6 +182,45 @@ final class BaselineTests: XCTestCase {
         XCTAssertEqual(baseline.count, 1)
     }
 
+    /// One record should be able to cover a whole class — "this test truncates titles by design" —
+    /// without listing every length the text happens to get cut at.
+    func testTextGlobCoversEveryLength() {
+        let broad = "CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | by design"
+        let baseline = Baseline(entries: [broad])
+        for text in ["Microsprint P...", "Microsprint Po...", "FE Core Sprint D..."] {
+            XCTAssertTrue(baseline.excludes(BaselineKey(
+                suite: "CalendarWidgetSnapshotTests", test: "meeting-focus", geometry: "170x170",
+                language: "en", kind: "truncated", text: text
+            )))
+        }
+    }
+
+    func testTextGlobStaysInsideItsTest() {
+        let broad = "CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | by design"
+        let baseline = Baseline(entries: [broad])
+        XCTAssertFalse(baseline.excludes(BaselineKey(
+            suite: "CalendarWidgetSnapshotTests", test: "confirm-until-event", geometry: "170x170",
+            language: "en", kind: "truncated", text: "Microsprint P..."
+        )))
+    }
+
+    func testTestNameGlobMatches() {
+        let baseline = Baseline(entries: ["CalendarWidgetSnapshotTests | meeting-focus* | * | * | truncated | * | x"])
+        XCTAssertTrue(baseline.excludes(BaselineKey(
+            suite: "CalendarWidgetSnapshotTests", test: "meeting-focus-large-text", geometry: "g",
+            language: "en", kind: "truncated", text: "anything..."
+        )))
+    }
+
+    /// Globs must not blur the one field that separates a gating finding from an advisory one.
+    func testKindIsNeverGlobbed() {
+        let baseline = Baseline(entries: ["CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | x"])
+        XCTAssertFalse(baseline.excludes(BaselineKey(
+            suite: "CalendarWidgetSnapshotTests", test: "meeting-focus", geometry: "g",
+            language: "en", kind: "untranslated", text: "anything..."
+        )))
+    }
+
     func testRejectsMalformedRecords() {
         XCTAssertEqual(Baseline(entries: ["too | few | fields"]).count, 0)
     }

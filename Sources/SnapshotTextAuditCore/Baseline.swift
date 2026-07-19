@@ -26,8 +26,14 @@ public struct BaselineKey: Sendable, Hashable {
 
 /// A newline-delimited file of accepted findings, one `|`-separated record per line.
 ///
-/// `language` and `geometry` accept `*` to cover every variant of a render, which is the common case:
-/// an intentional placeholder is intentional in all six languages.
+/// Every field except `kind` is a glob, so a record can be as tight or as broad as the reason
+/// warrants. `* | *` for geometry and language is the common case — an intentional placeholder is
+/// intentional in all six languages — and a glob on `text` covers a whole class:
+///
+///     CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | titles truncate by design
+///
+/// Globbing `text` is the broader, more durable choice: it survives fixture copy changing, but it
+/// also accepts a *new* truncation in the same test. Spell the text out when that matters.
 public struct Baseline: Sendable {
     private struct Entry: Sendable {
         let suite: String
@@ -38,12 +44,16 @@ public struct Baseline: Sendable {
         let text: String
 
         func matches(_ key: BaselineKey) -> Bool {
-            suite == key.suite
-                && test == key.test
-                && (geometry == "*" || geometry == key.geometry)
-                && (language == "*" || language == key.language)
+            glob(suite, key.suite)
+                && glob(test, key.test)
+                && glob(geometry, key.geometry)
+                && glob(language, key.language)
                 && kind == key.kind
-                && text == key.text
+                && glob(text, key.text)
+        }
+
+        private func glob(_ pattern: String, _ value: String) -> Bool {
+            pattern == value || fnmatch(pattern, value, 0) == 0
         }
     }
 
@@ -79,6 +89,9 @@ public struct Baseline: Sendable {
     public var count: Int { entries.count }
 
     /// Renders findings as baseline records, ready to append to the file.
+    ///
+    /// Emits one record per distinct text so a human sees what is being accepted; collapsing to a
+    /// `*` is a deliberate edit, not something to be talked into by a generator.
     public static func record(for finding: Finding, reason: String) -> String {
         let key = finding.baselineKey
         return [key.suite, key.test, "*", "*", key.kind, key.text, reason]

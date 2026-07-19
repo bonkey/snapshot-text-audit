@@ -127,12 +127,21 @@ snapshot-text-audit . --write-baseline > snapshot-text-baseline.txt
 snapshot-text-audit . --baseline snapshot-text-baseline.txt
 ```
 
-Records are `suite | test | geometry | language | kind | text | reason`, where `geometry` and
-`language` accept `*`.
+Records are `suite | test | geometry | language | kind | text | reason`. **Every field except `kind`
+is a glob**, so a record is as tight or as broad as its reason deserves:
 
 ```
+# this exact string, everywhere it appears
 GardienComposerSnapshotTests | composer-disabled-send-button | * | * | truncated | Ask to unblock... | placeholder, by design
+
+# a whole class — titles in a glanceable widget are meant to ellipsise
+CalendarWidgetSnapshotTests | meeting-focus* | * | * | truncated | * | event titles ellipsise by design
 ```
+
+Globbing `text` is the durable choice — it survives fixture copy changing — but it will also swallow a
+*new* truncation in that test. Spell the text out when the specific string is what makes it
+acceptable. `kind` is never globbed, so accepting a truncation never quietly accepts a missing
+translation.
 
 **The key deliberately excludes the file name.** Snapshot references get renamed wholesale — trait
 segments added, tests renamed — without a single pixel changing. A file-name key would go stale on
