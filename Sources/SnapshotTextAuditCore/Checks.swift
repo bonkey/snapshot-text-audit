@@ -83,7 +83,7 @@ public enum Checks {
     ///
     /// A missing catalog key is invisible to catalog tooling — the key exists, the wrong text ships.
     /// Short and non-alphabetic strings are skipped: numerals, times and product names are expected
-    /// to match across languages.
+    /// to match across languages. So are hostnames, which match across languages by definition.
     public static func untranslated(
         in images: [ScannedImage],
         baselineLanguage: String,
@@ -105,12 +105,49 @@ public enum Checks {
                 let text = line.text.trimmed()
                 guard text.count >= minimumLength,
                       text.contains(where: { $0.isLetter }),
+                      !isHostList(text),
                       baseline.contains(text)
                 else { continue }
                 findings.append(.untranslated(image: image, line: line, baselineLanguage: baselineLanguage))
             }
         }
         return findings
+    }
+
+    /// A line that is nothing but hostnames — `instagram.com`, `youtu.be`, `googlevideo.com`.
+    ///
+    /// A host is the same string in every language, so it can never be evidence of a missing
+    /// translation. Left in, domain lists are the single largest source of findings a human has to
+    /// approve one by one, and every one of those decisions has the same answer.
+    ///
+    /// The whole line must be hosts. `Visit instagram.com for more` is a sentence that happens to
+    /// contain one, and still gets checked.
+    static func isHostList(_ text: String) -> Bool {
+        let tokens = text.split { $0.isWhitespace || $0 == "," }
+        return !tokens.isEmpty && tokens.allSatisfy(isHost)
+    }
+
+    /// A single host, tolerating the URL it may be wrapped in: `https://youtu.be/x` is still a host.
+    ///
+    /// The last label carries the decision, and it is deliberately tight — 2 to 6 lowercase ASCII
+    /// letters. That admits the TLDs that appear in shipped copy (`.com`, `.be`, `.app`, `.video`)
+    /// while leaving a longer dotted lowercase string like `settings.notifications` to be reported,
+    /// because that reads as a raw catalog key leaking into the UI, which is a defect worth seeing.
+    /// A host with a longer TLD is rare enough to approve by hand the once.
+    private static func isHost(_ token: Substring) -> Bool {
+        var host = token
+        if let scheme = host.range(of: "://") { host = host[scheme.upperBound...] }
+        host = host.prefix { $0 != "/" && $0 != "?" && $0 != "#" }
+
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2, let tld = labels.last,
+              (2...6).contains(tld.count),
+              tld.allSatisfy({ $0.isASCII && $0.isLowercase })
+        else { return false }
+
+        return labels.dropLast().allSatisfy { label in
+            !label.isEmpty && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        }
     }
 
     /// Text running into a frame edge, which *may* mean it is sliced.

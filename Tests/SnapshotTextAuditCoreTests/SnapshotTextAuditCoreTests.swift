@@ -73,6 +73,80 @@ final class TruncationRuleTests: XCTestCase {
     }
 }
 
+final class HostRuleTests: XCTestCase {
+    func testAcceptsPlainHosts() {
+        XCTAssertTrue(Checks.isHostList("instagram.com"))
+        XCTAssertTrue(Checks.isHostList("googlevideo.com"))
+        XCTAssertTrue(Checks.isHostList("youtu.be"))
+        XCTAssertTrue(Checks.isHostList("www.instagram.com"))
+        XCTAssertTrue(Checks.isHostList("r3---sn-4g5e6nzs.googlevideo.com"))
+    }
+
+    func testAcceptsHostWrappedInAURL() {
+        XCTAssertTrue(Checks.isHostList("https://youtu.be/dQw4w9WgXcQ"))
+        XCTAssertTrue(Checks.isHostList("instagram.com/explore"))
+    }
+
+    /// The case the rule exists for: a screen listing blocked domains.
+    func testAcceptsDomainLists() {
+        XCTAssertTrue(Checks.isHostList("instagram.com, youtu.be, googlevideo.com"))
+        XCTAssertTrue(Checks.isHostList("instagram.com youtu.be"))
+    }
+
+    /// A sentence that merely mentions a host is still a sentence.
+    func testRejectsProseAroundAHost() {
+        XCTAssertFalse(Checks.isHostList("Visita instagram.com para saber mais"))
+        XCTAssertFalse(Checks.isHostList("Bloquear instagram.com"))
+    }
+
+    /// The tight TLD keeps raw catalog keys visible — those are a defect, not a domain.
+    func testRejectsDottedIdentifiers() {
+        XCTAssertFalse(Checks.isHostList("settings.notifications"))
+        XCTAssertFalse(Checks.isHostList("Bloqueado.Apps"))
+        XCTAssertFalse(Checks.isHostList("Terminar. Continuar."))
+    }
+
+    func testRejectsTextWithoutALabelPair() {
+        XCTAssertFalse(Checks.isHostList("Cancelar"))
+        XCTAssertFalse(Checks.isHostList(""))
+        XCTAssertFalse(Checks.isHostList("instagram."))
+        XCTAssertFalse(Checks.isHostList(".com"))
+    }
+}
+
+final class UntranslatedRuleTests: XCTestCase {
+    private func image(_ language: String, _ texts: [String]) -> ScannedImage {
+        let url = URL(fileURLWithPath: "/refs/Suite/roster.148x148-small-min-default-\(language)-light.png")
+        return ScannedImage(
+            url: url,
+            name: SnapshotName(url: url),
+            lines: texts.map { TextLine(text: $0, minX: 0.2, minY: 0.2, maxX: 0.8, maxY: 0.8) },
+            pixelWidth: 148,
+            pixelHeight: 148
+        )
+    }
+
+    private func findings(_ texts: [String]) -> [Finding] {
+        Checks.untranslated(in: [image("en", texts), image("pt-PT", texts)], baselineLanguage: "en")
+    }
+
+    func testReportsIdenticalSentences() {
+        XCTAssertEqual(findings(["Block distracting apps"]).count, 1)
+    }
+
+    func testSkipsHosts() {
+        XCTAssertTrue(findings(["googlevideo.com"]).isEmpty)
+        XCTAssertTrue(findings(["instagram.com, youtu.be"]).isEmpty)
+    }
+
+    /// Skipping hosts must not spill over onto the sentence next to them.
+    func testStillReportsSentencesOnAScreenOfHosts() {
+        let mixed = findings(["instagram.com", "Blocked while you focus"])
+        XCTAssertEqual(mixed.count, 1)
+        XCTAssertEqual(mixed.first?.line.text, "Blocked while you focus")
+    }
+}
+
 final class ImageBoxTests: XCTestCase {
     func testDefaultFitsTallScreensWithoutFloodingScrollback() {
         let box = TerminalReport.ImageBox()

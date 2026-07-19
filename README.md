@@ -109,9 +109,13 @@ Compares every translated render against the same render in the baseline languag
 character-for-character identical on a screen that should be translated is a missing catalog entry —
 invisible to catalog tooling, because the key exists and the wrong text ships.
 
-It cannot know that a domain list, a person's name or deliberately-verbatim copy is *supposed* to be
-identical. Accept those once into a baseline and the check goes quiet. Expect a few dozen entries the
-first time; on the reference corpus, 802 raw findings collapsed to 176 unique records.
+Hostnames are skipped outright — a line that is nothing but domains (`instagram.com`, `youtu.be`,
+`googlevideo.com`, optionally wrapped in a URL) is the same string in every language, so it can never
+be evidence of a missing translation. A sentence that merely mentions one is still checked.
+
+It cannot know that a person's name or deliberately-verbatim copy is *supposed* to be identical.
+Accept those once into a baseline and the check goes quiet. Expect a few dozen entries the first
+time; on the reference corpus, 802 raw findings collapsed to 176 unique records.
 
 **Good enough to fail a build, after the first calibration pass.**
 
@@ -207,8 +211,9 @@ the lever.
 swift test
 ```
 
-Covers file-name parsing, the truncation rule, baseline matching (including that a rename does not
-resurrect an accepted finding, and that changed copy does), glob filters, and image-box scaling.
+Covers file-name parsing, the truncation rule, hostname exclusion, baseline matching (including that a
+rename does not resurrect an accepted finding, and that changed copy does), glob filters, and
+image-box scaling.
 
 ## Limits
 
