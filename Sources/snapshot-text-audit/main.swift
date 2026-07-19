@@ -1,0 +1,179 @@
+import Foundation
+import SnapshotTextAuditCore
+
+let usage = """
+snapshot-text-audit — find truncated, clipped and untranslated text in snapshot reference images
+
+USAGE
+  snapshot-text-audit [<root>] [options]
+
+  <root>  directory of .png references (default: current directory)
+
+SCOPE
+  --changed [<base>]     only files git reports as changed vs <base> (default: origin/main)
+  --include <glob>       only files matching (repeatable)
+  --exclude <glob>       skip files matching (repeatable)
+
+CHECKS
+  --no-truncation        skip the ellipsis check
+  --no-untranslated      skip the untranslated-text check
+  --edges                include edge-proximity findings (informational, noisy)
+  --baseline-language    language treated as the source of truth (default: en)
+
+OUTPUT
+  --images               draw the snapshot inline (iTerm2 only)
+  --image-width <px>     inline image width (default: 320)
+  --baseline <file>      accepted findings to ignore
+  --write-baseline       print baseline records for every finding, then exit 0
+  --quiet                findings only
+
+EXIT
+  0  no findings, or only informational ones
+  1  truncated or untranslated text found
+  2  bad usage or unreadable input
+"""
+
+struct Options {
+    var root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    var changedBase: String?
+    var include: [String] = []
+    var exclude: [String] = []
+    var checkTruncation = true
+    var checkUntranslated = true
+    var checkEdges = false
+    var baselineLanguage = "en"
+    var images = false
+    var imageWidth = 320
+    var baselineFile: URL?
+    var writeBaseline = false
+    var quiet = false
+}
+
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
+    exit(2)
+}
+
+var options = Options()
+var arguments = Array(CommandLine.arguments.dropFirst())
+var positional: [String] = []
+
+var index = 0
+while index < arguments.count {
+    let argument = arguments[index]
+    func value(_ name: String) -> String {
+        index += 1
+        guard index < arguments.count else { fail("\(name) needs a value") }
+        return arguments[index]
+    }
+
+    switch argument {
+    case "-h", "--help": print(usage); exit(0)
+    case "--changed":
+        if index + 1 < arguments.count, !arguments[index + 1].hasPrefix("-") {
+            options.changedBase = value("--changed")
+        } else {
+            options.changedBase = "origin/main"
+        }
+    case "--include": options.include.append(value("--include"))
+    case "--exclude": options.exclude.append(value("--exclude"))
+    case "--no-truncation": options.checkTruncation = false
+    case "--no-untranslated": options.checkUntranslated = false
+    case "--edges": options.checkEdges = true
+    case "--baseline-language": options.baselineLanguage = value("--baseline-language")
+    case "--images": options.images = true
+    case "--image-width": options.imageWidth = Int(value("--image-width")) ?? 320
+    case "--baseline": options.baselineFile = URL(fileURLWithPath: value("--baseline"))
+    case "--write-baseline": options.writeBaseline = true
+    case "--quiet": options.quiet = true
+    default:
+        if argument.hasPrefix("-") { fail("unknown option \(argument)") }
+        positional.append(argument)
+    }
+    index += 1
+}
+
+if let first = positional.first {
+    options.root = URL(fileURLWithPath: first).standardizedFileURL
+}
+guard FileManager.default.fileExists(atPath: options.root.path) else {
+    fail("no such directory: \(options.root.path)")
+}
+
+let style = TerminalStyle.detect(imagesRequested: options.images)
+var report = TerminalReport(style: style, imageWidth: options.imageWidth)
+
+var urls: [URL]
+if let base = options.changedBase {
+    guard let changed = ImageSource.changed(under: options.root, base: base, repository: options.root) else {
+        fail("git diff against \(base) failed — is \(options.root.path) inside a repository?")
+    }
+    urls = changed
+    if !options.quiet { report.note("scope: files changed vs \(base)") }
+} else {
+    urls = ImageSource.all(under: options.root)
+}
+urls = ImageSource.filter(urls, include: options.include, exclude: options.exclude)
+
+guard !urls.isEmpty else {
+    if !options.quiet { report.note("no images to scan"); report.flush() }
+    exit(0)
+}
+
+let baseline: Baseline
+if let file = options.baselineFile, FileManager.default.fileExists(atPath: file.path) {
+    baseline = (try? Baseline.load(from: file)) ?? Baseline()
+} else {
+    baseline = Baseline()
+}
+
+if !options.quiet {
+    report.note("scanning \(urls.count) image\(urls.count == 1 ? "" : "s")…")
+    report.flush()
+    report = TerminalReport(style: style, imageWidth: options.imageWidth)
+}
+
+let languages = ["en-US", "fr-FR", "es-ES", "pt-BR", "de-DE", "it-IT"]
+let (scanned, failures) = OCR.scanAll(urls: urls, languages: languages)
+
+var findings: [Finding] = []
+if options.checkTruncation { findings += Checks.truncated(in: scanned) }
+if options.checkUntranslated {
+    findings += Checks.untranslated(in: scanned, baselineLanguage: options.baselineLanguage)
+}
+if options.checkEdges {
+    findings += Checks.edges(in: scanned, baselineLanguage: options.baselineLanguage)
+}
+
+findings = findings.filter { !baseline.excludes($0.baselineKey) }
+
+if options.writeBaseline {
+    for finding in findings {
+        print(Baseline.record(for: finding, reason: "TODO: why is this accepted?"))
+    }
+    exit(0)
+}
+
+let errors = findings.filter { $0.severity == .error }
+let infos = findings.filter { $0.severity == .info }
+
+for (title, group) in [("Findings", errors), ("Informational — needs a human", infos)]
+    where !group.isEmpty
+{
+    report.heading(title)
+    report.rule()
+    for finding in group.sorted(by: { $0.image.url.path < $1.image.url.path }) {
+        report.finding(finding, showImage: options.images)
+    }
+}
+
+if !options.quiet {
+    var summary = "\(scanned.count) scanned · \(errors.count) finding\(errors.count == 1 ? "" : "s")"
+    if !infos.isEmpty { summary += " · \(infos.count) informational" }
+    if baseline.count > 0 { summary += " · \(baseline.count) baselined" }
+    if !failures.isEmpty { summary += " · \(failures.count) unreadable" }
+    report.heading(summary)
+}
+
+report.flush()
+exit(errors.isEmpty ? 0 : 1)

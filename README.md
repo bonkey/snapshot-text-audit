@@ -1,0 +1,134 @@
+# snapshot-text-audit
+
+Finds text that is **cut off**, **sliced by a frame edge**, or **left untranslated** in snapshot-test
+reference images.
+
+A snapshot test asserts *"this still looks like it did"*. It cannot notice that what it captured was
+broken to begin with — a reference recorded with a truncated button label passes forever. This reads
+the images instead, with Apple's Vision framework, and says what is wrong with them.
+
+Built against a real iOS corpus of 967 references across 6 languages, where it found truncated
+confirm/cancel buttons that were indistinguishable from each other, a primary call-to-action sliced by
+the frame, and four separate strings shipping in English on translated screens.
+
+## Install
+
+```sh
+git clone https://github.com/bonkey/snapshot-text-audit
+cd snapshot-text-audit
+swift build -c release
+cp .build/release/snapshot-text-audit /usr/local/bin/
+```
+
+Requires macOS 13+. No dependencies.
+
+## Use
+
+```sh
+# everything under a directory
+snapshot-text-audit path/to/__Snapshots__
+
+# only what changed — the usual CI shape
+snapshot-text-audit path/to/__Snapshots__ --changed origin/main
+
+# narrow it down
+snapshot-text-audit . --include 'FocusWidget*' --exclude '*-dark.png'
+
+# draw the offending image right in the terminal (iTerm2)
+snapshot-text-audit . --images
+```
+
+Exit code is `1` when there are findings, `0` when clean, `2` on bad usage — so it drops into a
+pipeline unchanged.
+
+## What it checks
+
+### Truncated text — reliable
+
+Text cut short with an ellipsis. A letter or digit must sit immediately before the dots, which is what
+separates a real truncation from a decorative `···` overflow-menu glyph. On the corpus this was built
+against, that one rule removed 59% of raw hits with no judgement call, leaving roughly 96% precision.
+
+**Good enough to fail a build.**
+
+### Untranslated text — reliable, but needs calibrating once
+
+Compares every translated render against the same render in the baseline language. A sentence that is
+character-for-character identical on a screen that should be translated is a missing catalog entry —
+invisible to catalog tooling, because the key exists and the wrong text ships.
+
+It cannot know that a domain list, a person's name or deliberately-verbatim copy is *supposed* to be
+identical. Accept those once into a baseline and the check goes quiet. Expect a few dozen entries the
+first time; on the reference corpus, 802 raw findings collapsed to 176 unique records.
+
+**Good enough to fail a build, after the first calibration pass.**
+
+### Edge-clipped text — informational only, off by default
+
+Text running into a frame edge, which *might* mean it is sliced. Enable with `--edges`.
+
+A bounding box near an edge is indistinguishable from text that simply ends there, so this is wrong
+far more often than it is right — around nine in ten hits on the reference corpus were harmless. One
+filter is applied because it was verified to help: a cut appearing in *every* language is structural
+(a scroll fold, a pinned footer), while a real overflow spares the baseline language, so groups that
+fire in every language are dropped.
+
+Never affects the exit code. It exists because it is the only way to catch clipping that produces no
+ellipsis — including the two worst defects found on the corpus it was built against.
+
+## Baselines
+
+```sh
+snapshot-text-audit . --write-baseline > snapshot-text-baseline.txt
+snapshot-text-audit . --baseline snapshot-text-baseline.txt
+```
+
+Records are `suite | test | geometry | language | kind | text | reason`, where `geometry` and
+`language` accept `*`.
+
+```
+GardienComposerSnapshotTests | composer-disabled-send-button | * | * | truncated | Ask to unblock... | placeholder, by design
+```
+
+**The key deliberately excludes the file name.** Snapshot references get renamed wholesale — trait
+segments added, tests renamed — without a single pixel changing. A file-name key would go stale on
+such a commit and report every accepted finding as new. The recognised `text` *is* part of the key, in
+the other direction: if a translation changes, the finding correctly comes back for review.
+
+## Names it understands
+
+```
+<test>.<geometry>-<trait>-<language>-<appearance>.png
+
+confirm-timed-block.148x148-small-min-default-pt-PT-light.png
+guardians-step.iPhone17-default-xLarge-fr-light.png
+```
+
+Segments are peeled off the tail, so unknown or missing ones degrade to `geometry` rather than
+failing. Languages parse as `en`, `pt-BR`, `es-419`.
+
+## Performance
+
+Roughly 60s for 1000 images, about 1s for a handful — and a handful is the normal case when scoped
+with `--changed`.
+
+Vision serialises inside a single process; running several processes in parallel is about three times
+faster than threads within one. If whole-corpus runs become a bottleneck, sharding across processes is
+the lever.
+
+## Limits
+
+It reads pixels, so it only knows what a camera would know.
+
+- Cannot see text overlapping other text
+- Cannot see text spilling out of a control away from a frame edge
+- Says nothing about colour, contrast, spacing or alignment
+- Judges whether text *fits*, never whether it is *correct*
+
+On the corpus this was built against, three conclusions drawn from raw output were reversed by opening
+the actual image: an intentional placeholder, a set of decorative `···` menus, and a footer overlap
+that turned out to be a deliberate assertion in another test. Treat findings as candidates.
+
+## Licence
+
+MIT
