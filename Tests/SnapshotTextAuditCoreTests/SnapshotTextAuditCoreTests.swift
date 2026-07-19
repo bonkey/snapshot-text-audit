@@ -135,94 +135,129 @@ final class ImageBoxTests: XCTestCase {
     }
 }
 
-final class BaselineTests: XCTestCase {
-    private let record = """
-    FocusWidgetSnapshotTests | confirm-timed-block | * | * | truncated | Bloq... | by design
+final class ApprovalPathMatchingTests: XCTestCase {
+    private let path = "ios/App/Snapshots/CalendarWidgetSnapshotTests/meeting-focus.170x170-en-light.png"
+
+    private func matches(_ pattern: String) -> Bool {
+        Approvals.Entry.matchesPath(pattern: pattern, path: path)
+    }
+
+    func testBareFileName() {
+        XCTAssertTrue(matches("meeting-focus.170x170-en-light.png"))
+    }
+
+    func testFileNameGlob() {
+        XCTAssertTrue(matches("meeting-focus*"))
+    }
+
+    func testPathSuffix() {
+        XCTAssertTrue(matches("CalendarWidgetSnapshotTests/meeting-focus.170x170-en-light.png"))
+    }
+
+    func testDirectoryGlob() {
+        XCTAssertTrue(matches("CalendarWidgetSnapshotTests/*"))
+        XCTAssertTrue(matches("*/meeting-focus*"))
+    }
+
+    func testFullPath() {
+        XCTAssertTrue(matches(path))
+    }
+
+    func testLeadingDoubleStar() {
+        XCTAssertTrue(matches("**/CalendarWidgetSnapshotTests/*"))
+    }
+
+    func testGlobSpansDirectories() {
+        XCTAssertTrue(matches("App/*/meeting-focus*"))
+    }
+
+    func testNonMatchingPatternIsRejected() {
+        XCTAssertFalse(matches("FocusWidgetSnapshotTests/*"))
+        XCTAssertFalse(matches("roster*"))
+    }
+}
+
+final class ApprovalsTests: XCTestCase {
+    private func entry(file: String, text: String, kind: String? = nil) -> Approvals.Entry {
+        Approvals.Entry(file: file, text: text, reason: "because", kind: kind)
+    }
+
+    private let yaml = """
+    approved:
+      - file: CalendarWidgetSnapshotTests/meeting-focus*
+        text: "*"
+        reason: titles ellipsise by design
+        kind: truncated
     """
 
-    private func key(
-        test: String = "confirm-timed-block",
-        geometry: String = "148x148-small-min",
-        language: String = "pt-PT",
-        text: String = "Bloq..."
-    ) -> BaselineKey {
-        BaselineKey(
-            suite: "FocusWidgetSnapshotTests", test: test, geometry: geometry,
-            language: language, kind: "truncated", text: text
-        )
+    func testRoundTripsThroughYAML() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("approvals-\(UUID().uuidString).yml")
+        var approvals = Approvals(entries: [entry(file: "a/b.png", text: "Cut...")])
+        try approvals.write(to: url)
+        let reloaded = try Approvals.load(from: url)
+        XCTAssertEqual(reloaded.entries, approvals.entries)
+        try? FileManager.default.removeItem(at: url)
     }
 
-    func testWildcardsMatchEveryVariant() {
-        let baseline = Baseline(entries: [record])
-        XCTAssertTrue(baseline.excludes(key()))
-        XCTAssertTrue(baseline.excludes(key(language: "es")))
-        XCTAssertTrue(baseline.excludes(key(geometry: "158x158-small-mid")))
+    func testEmptyFileLoadsAsEmpty() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("empty-\(UUID().uuidString).yml")
+        try "".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try Approvals.load(from: url).count, 0)
+        try? FileManager.default.removeItem(at: url)
     }
 
-    /// The point of the design: renaming a file must not resurrect accepted findings.
-    func testSurvivesFileRenames() {
-        let baseline = Baseline(entries: [record])
-        // Same render, file renamed to carry a Dynamic Type segment — geometry is wildcarded.
-        XCTAssertTrue(baseline.excludes(key(geometry: "148x148-small-min-accessibility3")))
+    func testParsesHandWrittenYAML() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hand-\(UUID().uuidString).yml")
+        try yaml.write(to: url, atomically: true, encoding: .utf8)
+        let approvals = try Approvals.load(from: url)
+        XCTAssertEqual(approvals.count, 1)
+        XCTAssertEqual(approvals.entries.first?.kind, "truncated")
+        try? FileManager.default.removeItem(at: url)
     }
 
-    /// The other half: changed copy is a new finding and must come back for review.
-    func testChangedTextIsNotExcluded() {
-        let baseline = Baseline(entries: [record])
-        XCTAssertFalse(baseline.excludes(key(text: "Bloquear...")))
+    /// Re-running --approve must not pile up duplicates of what a glob already covers.
+    func testAddSkipsWhatIsAlreadyCovered() {
+        var approvals = Approvals(entries: [entry(file: "CalendarWidget*/*", text: "*", kind: "truncated")])
+        let added = approvals.add([
+            entry(file: "CalendarWidgetSnapshotTests/meeting-focus.png", text: "Micro...", kind: "truncated"),
+        ])
+        XCTAssertEqual(added, 0)
+        XCTAssertEqual(approvals.count, 1)
     }
 
-    func testDifferentTestIsNotExcluded() {
-        let baseline = Baseline(entries: [record])
-        XCTAssertFalse(baseline.excludes(key(test: "confirm-until-event")))
+    func testAddAppendsGenuinelyNewEntries() {
+        var approvals = Approvals(entries: [entry(file: "a/b.png", text: "One...", kind: "truncated")])
+        let added = approvals.add([entry(file: "a/c.png", text: "Two...", kind: "truncated")])
+        XCTAssertEqual(added, 1)
+        XCTAssertEqual(approvals.count, 2)
     }
 
-    func testIgnoresCommentsAndBlankLines() {
-        let baseline = Baseline(entries: ["# a comment", "", "   ", record])
-        XCTAssertEqual(baseline.count, 1)
+    /// A kind on the entry confines it: approving a truncation must not also accept a bad translation.
+    func testKindConfinesTheApproval() {
+        let approvals = Approvals(entries: [entry(file: "a/b.png", text: "*", kind: "truncated")])
+        XCTAssertTrue(approvals.entries[0].matches(file: "a/b.png", text: "x...", kind: "truncated"))
+        XCTAssertFalse(approvals.entries[0].matches(file: "a/b.png", text: "x...", kind: "untranslated"))
     }
 
-    /// One record should be able to cover a whole class — "this test truncates titles by design" —
-    /// without listing every length the text happens to get cut at.
-    func testTextGlobCoversEveryLength() {
-        let broad = "CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | by design"
-        let baseline = Baseline(entries: [broad])
-        for text in ["Microsprint P...", "Microsprint Po...", "FE Core Sprint D..."] {
-            XCTAssertTrue(baseline.excludes(BaselineKey(
-                suite: "CalendarWidgetSnapshotTests", test: "meeting-focus", geometry: "170x170",
-                language: "en", kind: "truncated", text: text
-            )))
-        }
+    func testOmittedKindCoversEveryKind() {
+        let approvals = Approvals(entries: [entry(file: "a/b.png", text: "*")])
+        XCTAssertTrue(approvals.entries[0].matches(file: "a/b.png", text: "x", kind: "truncated"))
+        XCTAssertTrue(approvals.entries[0].matches(file: "a/b.png", text: "x", kind: "untranslated"))
     }
 
-    func testTextGlobStaysInsideItsTest() {
-        let broad = "CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | by design"
-        let baseline = Baseline(entries: [broad])
-        XCTAssertFalse(baseline.excludes(BaselineKey(
-            suite: "CalendarWidgetSnapshotTests", test: "confirm-until-event", geometry: "170x170",
-            language: "en", kind: "truncated", text: "Microsprint P..."
-        )))
+    func testGeneratedPathIsRelativeToBase() {
+        let base = URL(fileURLWithPath: "/repo/ios")
+        let file = URL(fileURLWithPath: "/repo/ios/App/Snapshots/Suite/a.png")
+        XCTAssertEqual(Approvals.path(for: file, relativeTo: base), "App/Snapshots/Suite/a.png")
     }
 
-    func testTestNameGlobMatches() {
-        let baseline = Baseline(entries: ["CalendarWidgetSnapshotTests | meeting-focus* | * | * | truncated | * | x"])
-        XCTAssertTrue(baseline.excludes(BaselineKey(
-            suite: "CalendarWidgetSnapshotTests", test: "meeting-focus-large-text", geometry: "g",
-            language: "en", kind: "truncated", text: "anything..."
-        )))
-    }
-
-    /// Globs must not blur the one field that separates a gating finding from an advisory one.
-    func testKindIsNeverGlobbed() {
-        let baseline = Baseline(entries: ["CalendarWidgetSnapshotTests | meeting-focus | * | * | truncated | * | x"])
-        XCTAssertFalse(baseline.excludes(BaselineKey(
-            suite: "CalendarWidgetSnapshotTests", test: "meeting-focus", geometry: "g",
-            language: "en", kind: "untranslated", text: "anything..."
-        )))
-    }
-
-    func testRejectsMalformedRecords() {
-        XCTAssertEqual(Baseline(entries: ["too | few | fields"]).count, 0)
+    func testGeneratedPathFallsBackToAbsoluteOutsideBase() {
+        let base = URL(fileURLWithPath: "/repo/ios")
+        let file = URL(fileURLWithPath: "/elsewhere/a.png")
+        XCTAssertEqual(Approvals.path(for: file, relativeTo: base), "/elsewhere/a.png")
     }
 }
 

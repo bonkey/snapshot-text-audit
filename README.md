@@ -128,33 +128,52 @@ fire in every language are dropped.
 Never affects the exit code. It exists because it is the only way to catch clipping that produces no
 ellipsis — including the two worst defects found on the corpus it was built against.
 
-## Baselines
+## Approved findings
+
+Some findings are correct and expected — a glanceable widget is *meant* to ellipsise a long event
+title. Record those once and the tool reports only what is new.
 
 ```sh
-snapshot-text-audit . --write-baseline > snapshot-text-baseline.txt
-snapshot-text-audit . --baseline snapshot-text-baseline.txt
+snapshot-text-audit . --approve --reason "titles ellipsise by design"
+snapshot-text-audit .                      # now silent about them
 ```
 
-Records are `suite | test | geometry | language | kind | text | reason`. **Every field except `kind`
-is a glob**, so a record is as tight or as broad as its reason deserves:
+`--approve` writes `snapshot-text-approved.yml` next to the corpus (override with `--approved`), and
+merges on re-run, so it is safe to repeat and your hand-written entries survive.
 
+```yaml
+approved:
+  - file: App/Snapshots/CalendarWidgetSnapshotTests/meeting-focus.170x170-en-light.png
+    text: 09:13 Microsprint Pod...
+    kind: truncated
+    reason: event titles ellipsise by design in a glanceable widget
 ```
-# this exact string, everywhere it appears
-GardienComposerSnapshotTests | composer-disabled-send-button | * | * | truncated | Ask to unblock... | placeholder, by design
 
-# a whole class — titles in a glanceable widget are meant to ellipsise
-CalendarWidgetSnapshotTests | meeting-focus* | * | * | truncated | * | event titles ellipsise by design
+`file` and `text` are globs. `file` matches at any depth, so all of these find the same reference:
+
+```yaml
+  - file: meeting-focus.170x170-en-light.png       # bare name
+  - file: CalendarWidgetSnapshotTests/*            # a directory
+  - file: "*/meeting-focus*"                       # anywhere
+  - file: App/Snapshots/**/meeting-focus*          # full path
 ```
 
-Globbing `text` is the durable choice — it survives fixture copy changing — but it will also swallow a
-*new* truncation in that test. Spell the text out when the specific string is what makes it
-acceptable. `kind` is never globbed, so accepting a truncation never quietly accepts a missing
-translation.
+`--approve` writes the exact path and string, so the file says precisely what was accepted. Widening
+to a glob is a deliberate edit and usually the right one — 29 generated entries became this:
 
-**The key deliberately excludes the file name.** Snapshot references get renamed wholesale — trait
-segments added, tests renamed — without a single pixel changing. A file-name key would go stale on
-such a commit and report every accepted finding as new. The recognised `text` *is* part of the key, in
-the other direction: if a translation changes, the finding correctly comes back for review.
+```yaml
+  - file: "*/CalendarWidgetSnapshotTests/meeting-focus*"
+    text: "*"
+    kind: truncated
+    reason: event titles ellipsise by design in a glanceable widget
+```
+
+That also survives a rename. References get renamed wholesale — a Dynamic Type segment inserted, a
+test renamed — without a pixel changing, and an entry pinned to a full path goes stale the moment that
+happens.
+
+`kind` is optional and never globbed: omit it to cover every kind of finding for that pair, or set it
+so accepting a truncation cannot quietly accept a missing translation too.
 
 ## Names it understands
 

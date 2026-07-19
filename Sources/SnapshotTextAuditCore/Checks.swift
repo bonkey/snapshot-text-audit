@@ -52,17 +52,6 @@ public enum Finding: Sendable {
         }
     }
 
-    /// Stable across file renames: the pixels, not the path.
-    public var baselineKey: BaselineKey {
-        BaselineKey(
-            suite: image.name.suite,
-            test: image.name.test,
-            geometry: image.name.geometry,
-            language: image.name.language ?? "-",
-            kind: kind,
-            text: line.text.trimmed()
-        )
-    }
 }
 
 public enum Checks {

@@ -24,8 +24,10 @@ OUTPUT
   --images               draw the snapshot inline (iTerm2 only)
   --zoom <factor>        scale inline images (default: 1.0, e.g. 2 for double)
   --image-size <w>x<h>   fit box in px for inline images (default: 400x700)
-  --baseline <file>      accepted findings to ignore
-  --write-baseline       print baseline records for every finding, then exit 0
+  --approved <file>      YAML of reviewed-and-accepted findings to ignore
+                         (default: snapshot-text-approved.yml beside <root>)
+  --approve              add everything found to that file, then exit 0
+  --reason <text>        reason recorded by --approve
   --quiet                findings only
 
 EXIT
@@ -46,8 +48,9 @@ struct Options {
     var images = false
     var zoom: Double?
     var box = TerminalReport.ImageBox()
-    var baselineFile: URL?
-    var writeBaseline = false
+    var approvedFile: URL?
+    var approve = false
+    var reason: String?
     var quiet = false
 }
 
@@ -92,8 +95,9 @@ while index < arguments.count {
         let parts = raw.lowercased().split(separator: "x").compactMap { Int($0) }
         guard parts.count == 2 else { fail("--image-size expects <width>x<height>, got \(raw)") }
         options.box = TerminalReport.ImageBox(width: parts[0], height: parts[1])
-    case "--baseline": options.baselineFile = URL(fileURLWithPath: value("--baseline"))
-    case "--write-baseline": options.writeBaseline = true
+    case "--approved", "--baseline": options.approvedFile = URL(fileURLWithPath: value("--approved"))
+    case "--approve": options.approve = true
+    case "--reason": options.reason = value("--reason")
     case "--quiet": options.quiet = true
     default:
         if argument.hasPrefix("-") { fail("unknown option \(argument)") }
@@ -132,11 +136,16 @@ guard !urls.isEmpty else {
     exit(0)
 }
 
-let baseline: Baseline
-if let file = options.baselineFile, FileManager.default.fileExists(atPath: file.path) {
-    baseline = (try? Baseline.load(from: file)) ?? Baseline()
-} else {
-    baseline = Baseline()
+let approvedURL = options.approvedFile
+    ?? options.root.deletingLastPathComponent().appendingPathComponent("snapshot-text-approved.yml")
+
+var approvals = Approvals(url: approvedURL)
+if FileManager.default.fileExists(atPath: approvedURL.path) {
+    do {
+        approvals = try Approvals.load(from: approvedURL)
+    } catch {
+        fail("could not read \(approvedURL.lastPathComponent): \(error)")
+    }
 }
 
 if !options.quiet {
@@ -157,12 +166,21 @@ if options.checkEdges {
     findings += Checks.edges(in: scanned, baselineLanguage: options.baselineLanguage)
 }
 
-findings = findings.filter { !baseline.excludes($0.baselineKey) }
+let approvedCount = findings.count { approvals.approves($0) }
+findings = findings.filter { !approvals.approves($0) }
 
-if options.writeBaseline {
-    for finding in findings {
-        print(Baseline.record(for: finding, reason: "TODO: why is this accepted?"))
+if options.approve {
+    let base = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let added = approvals.add(findings.map {
+        Approvals.entry(for: $0, reason: options.reason, relativeTo: base)
+    })
+    do {
+        try approvals.write(to: approvedURL, header: Approvals.defaultHeader)
+    } catch {
+        fail("could not write \(approvedURL.path): \(error)")
     }
+    print("approved \(added) finding\(added == 1 ? "" : "s") → \(approvedURL.path)")
+    if added > 0 { print("edit the file to widen a glob or say why each one is acceptable") }
     exit(0)
 }
 
@@ -182,7 +200,7 @@ for (title, group) in [("Findings", errors), ("Informational — needs a human",
 if !options.quiet {
     var summary = "\(scanned.count) scanned · \(errors.count) finding\(errors.count == 1 ? "" : "s")"
     if !infos.isEmpty { summary += " · \(infos.count) informational" }
-    if baseline.count > 0 { summary += " · \(baseline.count) baselined" }
+    if approvedCount > 0 { summary += " · \(approvedCount) approved" }
     if !failures.isEmpty { summary += " · \(failures.count) unreadable" }
     report.heading(summary)
 }
