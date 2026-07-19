@@ -25,6 +25,9 @@ import Yams
 /// `kind` is optional and never globbed. Left out, the entry covers every kind of finding for that
 /// pair; set, it confines the approval, so accepting a truncation cannot quietly accept a missing
 /// translation as well.
+///
+/// `reason` is an optional note and never affects matching. Prefer it to a `#` comment: `--approve`
+/// decodes, merges and re-encodes, so hand-written comments do not survive a second run.
 public struct Approvals: Sendable {
     public struct Entry: Sendable, Codable, Hashable {
         public var file: String
@@ -154,7 +157,9 @@ public struct Approvals: Sendable {
     #           "*/meeting-focus*" and a full relative path all work
     #   text    glob over the recognised string
     #   kind    truncated | untranslated | edge  (optional; omit to cover every kind)
-    #   reason  why this is acceptable — write it, the next reader is you
+    #   reason  optional note; never affects matching, purely for whoever reads this next
+    #
+    # --approve rewrites this file, so `#` comments do not survive it — put notes in `reason`.
     #
     # --approve writes the exact path and string. Widening to a glob is worth doing: references get
     # renamed without their pixels changing, and a pinned path goes stale when that happens.

@@ -175,6 +175,10 @@ happens.
 `kind` is optional and never globbed: omit it to cover every kind of finding for that pair, or set it
 so accepting a truncation cannot quietly accept a missing translation too.
 
+`reason` is an optional note — nothing reads it, nothing enforces it. Prefer it to a `#` comment:
+`--approve` decodes, merges and re-encodes the file, so hand-written comments are lost on the next
+run while `reason` survives.
+
 ## Names it understands
 
 ```
