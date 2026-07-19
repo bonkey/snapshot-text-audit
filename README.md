@@ -13,11 +13,19 @@ the frame, and four separate strings shipping in English on translated screens.
 
 ## Install
 
+Download a universal binary from [Releases](https://github.com/bonkey/snapshot-text-audit/releases),
+or build it:
+
 ```sh
 git clone https://github.com/bonkey/snapshot-text-audit
 cd snapshot-text-audit
-swift build -c release
-cp .build/release/snapshot-text-audit /usr/local/bin/
+just install          # universal binary → /usr/local/bin
+```
+
+Without `just`:
+
+```sh
+swift build -c release && cp .build/release/snapshot-text-audit /usr/local/bin/
 ```
 
 Requires macOS 13+. No dependencies.
@@ -144,6 +152,18 @@ It reads pixels, so it only knows what a camera would know.
 On the corpus this was built against, three conclusions drawn from raw output were reversed by opening
 the actual image: an intentional placeholder, a set of decorative `···` menus, and a footer overlap
 that turned out to be a deliberate assertion in another test. Treat findings as candidates.
+
+## Releasing
+
+Cut from a laptop; there is no CI.
+
+```sh
+just release v1.0.0
+```
+
+Runs the tests, refuses a dirty tree or an existing tag, builds a universal binary, tars it with a
+checksum, publishes the GitHub release and pushes the tag. `just package` stops short of publishing if
+you only want the artefact.
 
 ## Licence
 
