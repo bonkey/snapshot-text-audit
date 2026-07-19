@@ -13,18 +13,38 @@ the frame, and four separate strings shipping in English on translated screens.
 
 ## Install
 
-Download the binary — no toolchain needed. One universal build runs on Apple silicon and Intel.
+With [mise](https://mise.jdx.dev) — nothing to install, nothing to compile:
 
 ```sh
-curl -L https://github.com/bonkey/snapshot-text-audit/releases/latest/download/snapshot-text-audit-macos-universal.tar.gz | tar xz
-sudo mv snapshot-text-audit /usr/local/bin/
+mise use -g github:bonkey/snapshot-text-audit
 ```
 
-Or grab the tarball from the [Releases page](https://github.com/bonkey/snapshot-text-audit/releases);
-`checksums.txt` is attached to every release.
+Or run it once without installing anything at all:
+
+```sh
+mise x github:bonkey/snapshot-text-audit -- snapshot-text-audit path/to/__Snapshots__
+```
+
+Pin it per project in `.mise.toml`, so everyone on the repo gets the same version:
+
+```toml
+[tools]
+"github:bonkey/snapshot-text-audit" = "latest"
+```
 
 <details>
-<summary>Build from source instead</summary>
+<summary>Other ways in</summary>
+
+**Download the binary** — one universal build, Apple silicon and Intel:
+
+```sh
+gh release download --repo bonkey/snapshot-text-audit --pattern '*.tar.gz' -O - | tar xz
+```
+
+Or take the tarball from the [Releases page](https://github.com/bonkey/snapshot-text-audit/releases);
+`checksums.txt` is attached to every release.
+
+**Build from source:**
 
 ```sh
 git clone https://github.com/bonkey/snapshot-text-audit
