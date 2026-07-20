@@ -538,17 +538,46 @@ final class MarkdownReportTests: XCTestCase {
         XCTAssertTrue(markdown.contains("(../../Snapshots/WidgetTests/roster.148x148-default-pt-PT-light.png)"))
     }
 
-    func testEachFindingFoldsAndInlinesItsImage() {
+    func testFoldsInlineTheirImages() {
         let markdown = render([finding("Apps desbloq…")])
         XCTAssertTrue(markdown.contains("<details>"))
         XCTAssertTrue(markdown.contains("<code>TRUNCATED</code> `pt-PT`"))
         XCTAssertTrue(markdown.contains("[![roster"))
     }
 
+    /// One fold per folder, not per finding: a suite opens once and shows all of its evidence.
+    func testAFolderIsASingleFold() {
+        let markdown = render([
+            finding("Apps desbloq…"),
+            finding("Bloquear durante 10…", file: "confirm.148x148-default-fr-light.png"),
+        ])
+        XCTAssertEqual(markdown.components(separatedBy: "<details>").count - 1, 1)
+        XCTAssertTrue(markdown.contains("2 findings · 2 references"))
+        XCTAssertTrue(markdown.contains("[![roster"))
+        XCTAssertTrue(markdown.contains("[![confirm"))
+    }
+
+    /// A screen that overflows usually overflows in more than one place, so several findings share
+    /// one reference — and repeating the PNG once per finding would repeat the whole image.
+    func testAReferenceIsDrawnOnceHoweverManyFindingsItHas() {
+        let markdown = render([finding("Apps desbloq…"), finding("Bloquear durante 10…")])
+        XCTAssertEqual(markdown.components(separatedBy: "[![roster").count - 1, 1)
+        XCTAssertTrue(markdown.contains("1 reference"))
+        XCTAssertTrue(markdown.contains("Apps desbloq…"))
+        XCTAssertTrue(markdown.contains("Bloquear durante 10…"))
+    }
+
     /// Recognised copy is arbitrary text, and none of it should be read as markup.
     func testEscapesRecognisedText() {
         let markdown = render([finding("*Wi-Fi* <off> [1]…")])
         XCTAssertTrue(markdown.contains("\\*Wi-Fi\\* &lt;off&gt; \\[1\\]…"))
+    }
+
+    /// Markdown reads a leading `/` as site-root-relative, so a report with no path back to the
+    /// corpus has to say `file://` rather than hand over a bare absolute path.
+    func testFallsBackToAFileURLWhenNoRelativePathExists() {
+        let markdown = render([finding("Apps desbloq…")], to: "/audit.md")
+        XCTAssertTrue(markdown.contains("(file:///repo/Snapshots/Suite/roster"))
     }
 
     func testEncodesSpacesInPaths() {

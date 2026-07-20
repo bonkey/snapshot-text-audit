@@ -100,11 +100,12 @@ snapshot-text-audit path/to/__Snapshots__ --markdown audit.md
 ```
 
 Inline images stop at the terminal — they need iTerm2, and they are gone the moment the CI log is
-archived. `--markdown` writes the same verdicts as a document: findings grouped under the folder
-holding the reference, one `<details>` fold each so two hundred hits stay a page you can read, and
-the image inlined inside the fold so opening one shows the evidence rather than a path to it. A
-table of contents at the top counts the findings per folder, which is usually enough to see that one
-suite went bad rather than the app.
+archived. `--markdown` writes the same verdicts as a document: one `<details>` fold per folder,
+holding every reference in it, so two hundred hits stay a page you can read and opening a suite shows
+all of its evidence at once. Inside a fold, findings sit under the reference they came from and the
+image is drawn once — several findings on one render is the ordinary case, and inlining the same PNG
+per finding would repeat it. A table of contents at the top counts the findings per folder, which is
+usually enough to see that one suite went bad rather than the app.
 
 ````markdown
 # Snapshot text audit
@@ -119,11 +120,15 @@ suite went bad rather than the app.
 ## CalendarWidgetSnapshotTests
 
 <details>
-<summary><code>TRUNCATED</code> `pt-BR` text truncated — Faça uma pausa do bloqueio por 10 min...</summary>
+<summary>4 findings · 2 references</summary>
 
-[confirm-timed-block.148x148-pt-BR-light.png](CalendarWidgetSnapshotTests/confirm-timed-block.148x148-pt-BR-light.png)
+### [confirm-timed-block.148x148-pt-BR-light.png](CalendarWidgetSnapshotTests/confirm-timed-block.148x148-pt-BR-light.png)
 
-...
+- <code>TRUNCATED</code> `pt-BR` text truncated — Faça uma pausa do bloqueio por 10 min...
+- <code>TRUNCATED</code> `pt-BR` text truncated — Bloquear durante 10...
+
+[![…](…)](…)
+
 </details>
 ````
 

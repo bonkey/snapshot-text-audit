@@ -4,9 +4,13 @@ import Foundation
 ///
 /// Findings are grouped by the folder holding the reference, because that is how a snapshot corpus
 /// is organised: one folder per test suite, and a folder that goes bad usually goes bad in several
-/// places at once. Each finding folds into a `<details>` so a run with two hundred hits stays a page
-/// you can read, and the image is inlined inside the fold so opening one shows the evidence rather
-/// than a path to it.
+/// places at once. One `<details>` per folder holds every image in it, so a run with two hundred
+/// hits stays a page you can read, and opening a suite shows all of its evidence at once rather than
+/// asking for a click per finding.
+///
+/// Inside a fold, findings are collected under the reference they came from and the image is drawn
+/// once. Several findings on one render is the ordinary case — a screen that overflows usually
+/// overflows in more than one place — and inlining the same PNG once per finding would repeat it.
 ///
 /// Every link is relative to the file the report is written to, so the document travels with the
 /// repository — commit it, attach it to a CI job, open it in a viewer, and the images still resolve.
@@ -43,11 +47,7 @@ public struct MarkdownReport {
         }
 
         for section in sections {
-            out += "\n## \(Self.escape(section.folder))\n\n"
-            let sorted = section.findings.sorted {
-                ($0.image.url.lastPathComponent, $0.kind) < ($1.image.url.lastPathComponent, $1.kind)
-            }
-            for finding in sorted { out += fold(finding) }
+            out += "\n## \(Self.escape(section.folder))\n\n" + fold(section.findings)
         }
 
         return out
@@ -62,25 +62,46 @@ public struct MarkdownReport {
         return relative
     }
 
-    private func fold(_ finding: Finding) -> String {
-        let path = Self.relativePath(from: directory, to: finding.image.url)
-        let href = Self.encode(path)
-        let file = finding.image.url.lastPathComponent
-        let language = finding.image.name.language.map { " `\($0)`" } ?? ""
+    /// One fold for a whole folder, holding every reference in it.
+    private func fold(_ findings: [Finding]) -> String {
+        let byImage = Dictionary(grouping: findings, by: { $0.image.url })
+        let references = byImage.keys.sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-        return """
+        var out = """
         <details>
-        <summary><code>\(finding.kind.uppercased())</code>\(language) \
-        \(Self.escape(finding.headline))</summary>
-
-        [\(Self.escape(file))](\(href))
-
-        [![\(Self.escape(file))](\(href))](\(href))
-
-        </details>
+        <summary>\(Self.tally(findings)) · \(references.count) \
+        reference\(references.count == 1 ? "" : "s")</summary>
 
 
         """
+
+        for url in references {
+            let href = self.href(for: url)
+            let file = Self.escape(url.lastPathComponent)
+            out += "### [\(file)](\(href))\n\n"
+
+            for finding in (byImage[url] ?? []).sorted(by: { $0.kind < $1.kind }) {
+                let language = finding.image.name.language.map { " `\($0)`" } ?? ""
+                out += "- <code>\(finding.kind.uppercased())</code>\(language) "
+                    + "\(Self.escape(finding.headline))\n"
+            }
+
+            out += "\n[![\(file)](\(href))](\(href))\n\n"
+        }
+
+        return out + "</details>\n"
+    }
+
+    /// A link target for a reference.
+    ///
+    /// Relative wherever the report and the corpus share a root, which is the case worth optimising
+    /// for — the document then travels with the repository. Otherwise a `file://` URL rather than a
+    /// bare absolute path: markdown reads a leading `/` as site-root-relative, so `/Users/…` would
+    /// resolve against wherever the document is being served rather than against the disk.
+    private func href(for url: URL) -> String {
+        let path = Self.relativePath(from: directory, to: url)
+        guard path.hasPrefix("/") else { return Self.encode(path) }
+        return URL(fileURLWithPath: path).absoluteString
     }
 
     private static func tally(_ findings: [Finding]) -> String {
