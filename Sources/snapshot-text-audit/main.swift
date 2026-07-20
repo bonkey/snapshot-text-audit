@@ -24,6 +24,8 @@ OUTPUT
   --images               draw the snapshot inline (iTerm2 only)
   --zoom <factor>        scale inline images (default: 1.0, e.g. 2 for double)
   --image-size <w>x<h>   fit box in px for inline images (default: 400x700)
+  --markdown <file>      also write a Markdown report, images inlined, links
+                         relative to <file> so it travels with the repository
   --approved <file>      YAML of reviewed-and-accepted findings to ignore
                          (default: ./.snapshot-text-approved.yml)
   --approve              add everything found to that file, then exit 0
@@ -55,6 +57,7 @@ struct Options {
     var images = false
     var zoom: Double?
     var box = TerminalReport.ImageBox()
+    var markdownFile: URL?
     var approvedFile: URL?
     var approve = false
     var reason: String?
@@ -104,6 +107,7 @@ while index < arguments.count {
         let parts = raw.lowercased().split(separator: "x").compactMap { Int($0) }
         guard parts.count == 2 else { fail("--image-size expects <width>x<height>, got \(raw)") }
         options.box = TerminalReport.ImageBox(width: parts[0], height: parts[1])
+    case "--markdown": options.markdownFile = URL(fileURLWithPath: value("--markdown"))
     case "--approved", "--baseline": options.approvedFile = URL(fileURLWithPath: value("--approved"))
     case "--approve": options.approve = true
     case "--reason": options.reason = value("--reason")
@@ -220,14 +224,24 @@ for (title, group) in [("Findings", errors), ("Informational — needs a human",
     }
 }
 
-if !options.quiet {
-    var summary = "\(scanned.count) scanned · \(errors.count) finding\(errors.count == 1 ? "" : "s")"
-    if !infos.isEmpty { summary += " · \(infos.count) informational" }
-    if approvedCount > 0 { summary += " · \(approvedCount) approved" }
-    if !failures.isEmpty { summary += " · \(failures.count) unreadable" }
-    if cacheHits > 0 { summary += " · \(cacheHits) cached" }
-    report.heading(summary)
+var summary = "\(scanned.count) scanned · \(errors.count) finding\(errors.count == 1 ? "" : "s")"
+if !infos.isEmpty { summary += " · \(infos.count) informational" }
+if approvedCount > 0 { summary += " · \(approvedCount) approved" }
+if !failures.isEmpty { summary += " · \(failures.count) unreadable" }
+if cacheHits > 0 { summary += " · \(cacheHits) cached" }
+
+if let markdownURL = options.markdownFile {
+    let markdown = MarkdownReport(destination: markdownURL, root: options.root)
+        .render(findings: findings, summary: summary)
+    do {
+        try markdown.write(to: markdownURL, atomically: true, encoding: .utf8)
+    } catch {
+        fail("could not write \(markdownURL.path): \(error)")
+    }
+    if !options.quiet { report.note("wrote \(markdownURL.path)") }
 }
+
+if !options.quiet { report.heading(summary) }
 
 report.flush()
 exit(errors.isEmpty ? 0 : 1)

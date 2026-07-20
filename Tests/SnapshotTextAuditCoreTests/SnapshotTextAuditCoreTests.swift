@@ -477,3 +477,86 @@ final class GlobFilterTests: XCTestCase {
         XCTAssertEqual(filtered.count, 2)
     }
 }
+
+final class MarkdownReportTests: XCTestCase {
+    private func finding(
+        _ text: String,
+        file: String = "roster.148x148-default-pt-PT-light.png",
+        suite: String = "Suite"
+    ) -> Finding {
+        let url = URL(fileURLWithPath: "/repo/Snapshots/\(suite)/\(file)")
+        let image = ScannedImage(
+            url: url,
+            name: SnapshotName(url: url),
+            lines: [TextLine(text: text, minX: 0.2, minY: 0.2, maxX: 0.8, maxY: 0.8)],
+            pixelWidth: 148,
+            pixelHeight: 148
+        )
+        return .truncated(image: image, line: image.lines[0])
+    }
+
+    private func render(
+        _ findings: [Finding],
+        to path: String = "/repo/audit.md",
+        root: String = "/repo/Snapshots"
+    ) -> String {
+        MarkdownReport(destination: URL(fileURLWithPath: path), root: URL(fileURLWithPath: root))
+            .render(findings: findings, summary: "2 scanned · 1 finding")
+    }
+
+    /// Links must resolve from the report, not from wherever the scan was run.
+    func testLinksAreRelativeToTheReport() {
+        let markdown = render([finding("Apps desbloq…")])
+        XCTAssertTrue(markdown.contains("(Snapshots/Suite/roster.148x148-default-pt-PT-light.png)"))
+        XCTAssertFalse(markdown.contains("/repo/Snapshots"))
+    }
+
+    func testWalksUpWhenTheReportSitsOutsideTheCorpus() {
+        let markdown = render([finding("Apps desbloq…")], to: "/repo/build/reports/audit.md")
+        XCTAssertTrue(markdown.contains("(../../Snapshots/Suite/roster.148x148-default-pt-PT-light.png)"))
+    }
+
+    func testGroupsByFolderWithATableOfContents() {
+        let markdown = render([
+            finding("Apps desbloq…", suite: "WidgetTests"),
+            finding("Bloquear durante 10…", file: "confirm.148x148-default-fr-light.png", suite: "AppTests"),
+        ])
+        XCTAssertTrue(markdown.contains("## Contents"))
+        XCTAssertTrue(markdown.contains("[AppTests](#apptests)"))
+        XCTAssertTrue(markdown.contains("[WidgetTests](#widgettests)"))
+        XCTAssertTrue(markdown.contains("\n## AppTests\n"))
+    }
+
+    /// Headings name the corpus, so a report filed in a build directory still reads as suites
+    /// rather than as a run of `..`.
+    func testHeadingsAreNamedRelativeToTheScannedRoot() {
+        let markdown = render(
+            [finding("Apps desbloq…", suite: "WidgetTests")],
+            to: "/repo/build/reports/audit.md"
+        )
+        XCTAssertTrue(markdown.contains("\n## WidgetTests\n"))
+        XCTAssertTrue(markdown.contains("(../../Snapshots/WidgetTests/roster.148x148-default-pt-PT-light.png)"))
+    }
+
+    func testEachFindingFoldsAndInlinesItsImage() {
+        let markdown = render([finding("Apps desbloq…")])
+        XCTAssertTrue(markdown.contains("<details>"))
+        XCTAssertTrue(markdown.contains("<code>TRUNCATED</code> `pt-PT`"))
+        XCTAssertTrue(markdown.contains("[![roster"))
+    }
+
+    /// Recognised copy is arbitrary text, and none of it should be read as markup.
+    func testEscapesRecognisedText() {
+        let markdown = render([finding("*Wi-Fi* <off> [1]…")])
+        XCTAssertTrue(markdown.contains("\\*Wi-Fi\\* &lt;off&gt; \\[1\\]…"))
+    }
+
+    func testEncodesSpacesInPaths() {
+        let markdown = render([finding("Apps desbloq…", file: "focus mode.png")])
+        XCTAssertTrue(markdown.contains("focus%20mode.png"))
+    }
+
+    func testSaysSoWhenThereIsNothingToReport() {
+        XCTAssertTrue(render([]).contains("Nothing to report."))
+    }
+}

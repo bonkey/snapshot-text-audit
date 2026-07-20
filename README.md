@@ -93,6 +93,46 @@ opening two files in Preview to decide whether a hit is worth acting on.
 Exit code is `1` when there are findings, `0` when clean, `2` on bad usage — so it drops into a
 pipeline unchanged.
 
+### A report to read outside a terminal
+
+```sh
+snapshot-text-audit path/to/__Snapshots__ --markdown audit.md
+```
+
+Inline images stop at the terminal — they need iTerm2, and they are gone the moment the CI log is
+archived. `--markdown` writes the same verdicts as a document: findings grouped under the folder
+holding the reference, one `<details>` fold each so two hundred hits stay a page you can read, and
+the image inlined inside the fold so opening one shows the evidence rather than a path to it. A
+table of contents at the top counts the findings per folder, which is usually enough to see that one
+suite went bad rather than the app.
+
+````markdown
+# Snapshot text audit
+
+967 scanned · 12 findings · 3 informational
+
+## Contents
+
+- [CalendarWidgetSnapshotTests](#calendarwidgetsnapshottests) — 4 findings
+- [OnboardingSnapshotTests](#onboardingsnapshottests) — 8 findings, 3 informational
+
+## CalendarWidgetSnapshotTests
+
+<details>
+<summary><code>TRUNCATED</code> `pt-BR` text truncated — Faça uma pausa do bloqueio por 10 min...</summary>
+
+[confirm-timed-block.148x148-pt-BR-light.png](CalendarWidgetSnapshotTests/confirm-timed-block.148x148-pt-BR-light.png)
+
+...
+</details>
+````
+
+Links are relative to the file you write, not to wherever the scan ran, so the report resolves from
+where it sits — commit it next to the corpus, or write it into a build directory and attach it to the
+job. Headings stay named after the scanned folders either way, so a report filed away from the corpus
+still reads as suites rather than as a run of `..`. The terminal output is unchanged; `--markdown`
+adds a file, it does not replace anything.
+
 ## What it checks
 
 ### Truncated text — reliable
@@ -233,7 +273,7 @@ swift test
 
 Covers file-name parsing, the truncation rule, hostname exclusion, baseline matching (including that a
 rename does not resurrect an accepted finding, and that changed copy does), cache keying and
-round-tripping, glob filters, and image-box scaling.
+round-tripping, glob filters, image-box scaling, and Markdown link resolution and escaping.
 
 ## Limits
 
