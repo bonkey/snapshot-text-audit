@@ -10,12 +10,16 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
     ],
     targets: [
         .target(name: "SnapshotTextAuditCore", dependencies: ["Yams"]),
         .executableTarget(
             name: "snapshot-text-audit",
-            dependencies: ["SnapshotTextAuditCore"]
+            dependencies: [
+                "SnapshotTextAuditCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
         ),
         .testTarget(
             name: "SnapshotTextAuditCoreTests",

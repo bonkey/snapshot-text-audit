@@ -82,6 +82,10 @@ width alone: snapshot corpora mix near-square widget tiles with phone screens th
 they are wide, and sizing those by width buries the terminal in scrollback. The default box is
 400×700; `--zoom 2` makes it 800×1400.
 
+`--images` and `--no-images` steer both outputs. Unset, the terminal stays text-only and the Markdown
+report keeps its images — `--images` draws them in the terminal too, `--no-images` drops them
+everywhere, leaving the Markdown report as links alone.
+
 Each finding is printed above the reference it came from, so the verdict and the evidence sit together:
 
 ![Findings with the offending references drawn inline in the terminal](docs/inline-images.png)
@@ -90,8 +94,8 @@ Both of these are real — the same escape button truncated in Brazilian and Eur
 the surviving text says the duration but not what it applies to. Seeing them saves the round trip of
 opening two files in Preview to decide whether a hit is worth acting on.
 
-Exit code is `1` when there are findings, `0` when clean, `2` on bad usage — so it drops into a
-pipeline unchanged.
+Exit code is `1` when there are findings, `0` when clean, `2` on unreadable input, `64` on bad
+usage — so it drops into a pipeline unchanged.
 
 ### A report to read outside a terminal
 
@@ -105,7 +109,8 @@ holding every reference in it, so two hundred hits stay a page you can read and 
 all of its evidence at once. Inside a fold, findings sit under the reference they came from and the
 image is drawn once — several findings on one render is the ordinary case, and inlining the same PNG
 per finding would repeat it. A table of contents at the top counts the findings per folder, which is
-usually enough to see that one suite went bad rather than the app.
+usually enough to see that one suite went bad rather than the app. `--no-images` keeps the report to
+links alone, for when it will not live next to the corpus.
 
 ````markdown
 # Snapshot text audit

@@ -17,14 +17,19 @@ import Foundation
 public struct MarkdownReport {
     private let directory: URL
     private let root: URL
+    private let includeImages: Bool
 
     /// - Parameters:
     ///   - destination: the file this report will be written to. Links are relative to it.
     ///   - root: the scanned directory. Headings are named relative to it, so a folder reads the
     ///     same whether the report lands beside the corpus or in a build directory away from it.
-    public init(destination: URL, root: URL) {
+    ///   - includeImages: whether each reference is drawn inline. Off, the report keeps the file
+    ///     links but stays text-only — for viewers that would fetch nothing anyway, or a corpus
+    ///     that will not sit next to the report.
+    public init(destination: URL, root: URL, includeImages: Bool = true) {
         directory = destination.deletingLastPathComponent()
         self.root = root
+        self.includeImages = includeImages
     }
 
     public func render(findings: [Finding], summary: String) -> String {
@@ -86,7 +91,7 @@ public struct MarkdownReport {
                     + "\(Self.escape(finding.headline))\n"
             }
 
-            out += "\n[![\(file)](\(href))](\(href))\n\n"
+            out += includeImages ? "\n[![\(file)](\(href))](\(href))\n\n" : "\n"
         }
 
         return out + "</details>\n"

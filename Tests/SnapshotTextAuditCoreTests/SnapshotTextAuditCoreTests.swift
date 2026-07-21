@@ -498,10 +498,24 @@ final class MarkdownReportTests: XCTestCase {
     private func render(
         _ findings: [Finding],
         to path: String = "/repo/audit.md",
-        root: String = "/repo/Snapshots"
+        root: String = "/repo/Snapshots",
+        images: Bool = true
     ) -> String {
-        MarkdownReport(destination: URL(fileURLWithPath: path), root: URL(fileURLWithPath: root))
-            .render(findings: findings, summary: "2 scanned · 1 finding")
+        MarkdownReport(
+            destination: URL(fileURLWithPath: path),
+            root: URL(fileURLWithPath: root),
+            includeImages: images
+        )
+        .render(findings: findings, summary: "2 scanned · 1 finding")
+    }
+
+    /// `--no-images` keeps the file links but drops the embeds.
+    func testWithoutImagesTheReportKeepsLinksButEmbedsNothing() {
+        let markdown = render([finding("Apps desbloq…")], images: false)
+        XCTAssertFalse(markdown.contains("!["))
+        XCTAssertTrue(markdown.contains(
+            "### [roster.148x148-default-pt-PT-light.png](Snapshots/Suite/roster.148x148-default-pt-PT-light.png)"
+        ))
     }
 
     /// Links must resolve from the report, not from wherever the scan was run.
